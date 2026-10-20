@@ -152,15 +152,18 @@ const LEVELS = {
 const CODE_COLORS = ['#c8352c', '#2f6fd8', '#3aa84a', '#e2b52a'];
 const CODE_NAMES = ['red', 'blue', 'green', 'yellow'];
 // every keypad door gets four random digits, and the order its coloured lamps say to enter them in
-function seizeNewRound(g) {
-  const L = Game.L;
+function seizeCodes(g) {
   g.codes = {}; g.ord = {};
-  L.locks.forEach((lock, i) => {
+  Game.L.locks.forEach((lock, i) => {
     if (lock.type !== 'N') return;
     let c = ''; for (let k = 0; k < 4; k++) c += Math.floor(Math.random() * 10);
     const o = [0, 1, 2, 3]; for (let k = 3; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [o[k], o[j]] = [o[j], o[k]]; }
     g.codes[i] = c; g.ord[i] = o.join('');
   });
+}
+function seizeNewRound(g) {
+  const L = Game.L;
+  seizeCodes(g);
   const first = L.chudSpots.findIndex((s) => !!s);
   const sp = L.chudSpots[first] || { x: 0, z: 0 };
   g.ch = { x: r2(sp.x), z: r2(sp.z), y: 0, s: 0, m: first >= 0 ? 'idle' : 'hidden', a: first, lx: 0, lz: 0, gr: 0 };
@@ -196,22 +199,25 @@ function chudGrid(L) {
   return c;
 }
 const chudOk = (L, x, z) => { const gx = Math.floor(x), gz = Math.floor(z); return inGrid(L, gx, gz) && !!chudGrid(L)[gz * L.W + gx]; };
-function chudLine(L, ax, az, bx, bz) {
+function chudPath(L, sx, sz, tx, tz) { const grid = chudGrid(L); return navPath(L, (k) => !!grid[k], sx, sz, tx, tz); }
+// a straight walk between two points, every step of it on cells ok(k) allows
+function navLine(L, ok, ax, az, bx, bz) {
   const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.35);
-  for (let i = 1; i <= n; i++) if (!chudOk(L, ax + (bx - ax) * i / n, az + (bz - az) * i / n)) return false;
+  for (let i = 1; i <= n; i++) { const x = Math.floor(ax + (bx - ax) * i / n), z = Math.floor(az + (bz - az) * i / n); if (!inGrid(L, x, z) || !ok(z * L.W + x)) return false; }
   return true;
 }
-function chudPath(L, sx, sz, tx, tz) {
-  const W = L.W, grid = chudGrid(L);
+// A* over the cells ok(k) allows, smoothed into as few straight runs as it can
+function navPath(L, ok, sx, sz, tx, tz) {
+  const W = L.W, N = L.W * L.H, at = (k) => k >= 0 && k < N && ok(k);
   let s = Math.floor(sz) * W + Math.floor(sx), t = Math.floor(tz) * W + Math.floor(tx);
-  if (!grid[t]) {
+  if (!at(t)) {
     // aim for the nearest cell it can stand in
     let best = -1, bd = 1e9; const gx0 = Math.floor(tx), gz0 = Math.floor(tz);
-    for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) { const x = gx0 + dx, z = gz0 + dz; if (!inGrid(L, x, z) || !grid[z * W + x]) continue; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = z * W + x; } }
+    for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) { const x = gx0 + dx, z = gz0 + dz; if (!inGrid(L, x, z) || !at(z * W + x)) continue; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = z * W + x; } }
     if (best < 0) return null;
     t = best; tx = (t % W) + 0.5; tz = ((t / W) | 0) + 0.5;
   }
-  if (!grid[s]) return [{ x: tx, z: tz }];
+  if (!at(s)) return [{ x: tx, z: tz }];
   const g = new Map([[s, 0]]), came = new Map(), heap = new MinHeap(), closed = new Set();
   const tgx = t % W, tgz = (t / W) | 0;
   heap.push(0, s);
@@ -225,7 +231,7 @@ function chudPath(L, sx, sz, tx, tz) {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue;
       const nx = cx + dx, nz = cz + dz, nk = nz * W + nx;
-      if (!grid[nk] || (dx && dz && (!grid[cz * W + nx] || !grid[nz * W + cx]))) continue;
+      if (!at(nk) || (dx && dz && (!at(cz * W + nx) || !at(nz * W + cx)))) continue;
       const cost = g.get(cur) + (dx && dz ? 1.414 : 1);
       if (cost < (g.has(nk) ? g.get(nk) : 1e9)) { g.set(nk, cost); came.set(nk, cur); const ax = Math.abs(nx - tgx), az = Math.abs(nz - tgz); heap.push(cost + Math.max(ax, az) + 0.414 * Math.min(ax, az), nk); }
     }
@@ -236,7 +242,7 @@ function chudPath(L, sx, sz, tx, tz) {
   const pts = cells.map((k) => ({ x: (k % W) + 0.5, z: ((k / W) | 0) + 0.5 }));
   pts[pts.length - 1] = { x: tx, z: tz };
   const out = []; let from = { x: sx, z: sz }, i = 0;
-  while (i < pts.length) { let j = Math.min(pts.length - 1, i + 12); while (j > i && !chudLine(L, from.x, from.z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); from = pts[j]; i = j + 1; }
+  while (i < pts.length) { let j = Math.min(pts.length - 1, i + 12); while (j > i && !navLine(L, at, from.x, from.z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); from = pts[j]; i = j + 1; }
   return out;
 }
 
@@ -548,11 +554,11 @@ function keypadTexts(title, help, close) { setText($('kp-title'), title); setTex
 
 // ---------- early access: the same keypad, in the menu, for the code that opens Seize - B5 early ----------
 const EARLY_CODE = '6020';
-function openAccessPad() {
+function openAccessPad(want) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  Game.keypad = { id: -1, access: true, entry: '' };
+  Game.keypad = { id: -1, access: true, entry: '', want };
   const box = $('keypad'), slots = $('kp-slots');
-  keypadTexts('Early access', 'Enter your code to play Seize - B5 early', 'Cancel · Esc');
+  keypadTexts('Early access', 'Enter your code to play Seize - B5 and Breach - A1 early', 'Cancel · Esc');
   slots.textContent = '';
   for (let i = 0; i < 4; i++) { const s = document.createElement('span'); s.style.borderColor = '#e8a33a'; s.style.color = '#e8e4da'; slots.appendChild(s); }
   box.hidden = false; box.classList.remove('wrong', 'right');
@@ -562,8 +568,9 @@ function openAccessPad() {
 function accessTry(code) {
   if (code !== EARLY_CODE) { Sound.play('beep'); keypadWrong(); return; }
   $('keypad').classList.remove('wrong'); $('keypad').classList.add('right'); Sound.play('pickup');
+  const want = Game.keypad && Game.keypad.want;
   Game.keypad = null;
-  setTimeout(() => { $('keypad').hidden = true; unlockEarlyAccess(); }, 650);
+  setTimeout(() => { $('keypad').hidden = true; unlockEarlyAccess(want); }, 650);
 }
 // the door opened (or you walked off, or died): put it away
 function tickKeypad() {
@@ -600,10 +607,19 @@ const INTRO_LINES = {
     coop: [['Recovery team, you are past B-4. The car is still going down.', 4], ['B-5 was sealed in 1979. Nobody has been down there since.', 4], ['Something is still down there with you. It cannot hear you.', 4], ['Do not let it see your light.', 3.5]],
     solo: [['Recovery, you are past B-4. The car is still going down.', 4], ['B-5 was sealed in 1979. Nobody has been down there since.', 4], ['Something is still down there with you. It cannot hear you.', 4], ['Do not let it see your light.', 3.5]],
   },
+  l3: {
+    coop: [['Recovery team, your car is going up. Past B-1. Past where the shaft ends.', 4], ['Above you is A-1: the civil defence bunker. Sealed from the inside.', 4], ['The garrison went quiet decades ago. Something kept the hatch shut.', 4], ['If it looks at you, do not move.', 3.5]],
+    solo: [['Recovery, your car is going up. Past B-1. Past where the shaft ends.', 4], ['Above you is A-1: the civil defence bunker. Sealed from the inside.', 4], ['The garrison went quiet decades ago. Something kept the hatch shut.', 4], ['If it looks at you, do not move.', 3.5]],
+  },
 };
 // the floors the car passes on the way down, and what the dial reads
-function liftFloorLabel(n) { return Game.levelKey === 'l2' ? ['B5', '', 'B4'][n] : 'B' + (4 - n); }
-function introFloorText(stopped, level) { return Game.levelKey === 'l2' ? (stopped ? 'Stopped · B-5' : 'Descending · ' + (level >= 4 ? 'B-5' : 'B-4')) : (stopped ? 'Stopped · ' : 'Descending · ') + 'B-' + level; }
+function liftFloorLabel(n) { return Game.levelKey === 'l3' ? ['A1', '', 'B5'][n] : Game.levelKey === 'l2' ? ['B5', '', 'B4'][n] : 'B' + (4 - n); }
+function introFloorText(stopped, level) {
+  if (Game.levelKey === 'l3') return stopped ? 'Stopped · A-1' : 'Ascending · ' + (level >= 4 ? 'A-1' : level >= 3 ? 'B-1' : 'B-5');
+  return Game.levelKey === 'l2' ? (stopped ? 'Stopped · B-5' : 'Descending · ' + (level >= 4 ? 'B-5' : 'B-4')) : (stopped ? 'Stopped · ' : 'Descending · ') + 'B-' + level;
+}
+// the car goes down to B4 and B5, and up to A1
+function liftGoesUp() { return Game.levelKey === 'l3'; }
 
 // ---------- whichever of them this level has ----------
 // B5 has the Chud; A1 has the Pale. Both are beasts (45-beast.js) with a kill of their own; this is how the

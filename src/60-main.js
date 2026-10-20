@@ -1,7 +1,9 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
 const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false };
-const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', camp: 'Campaign · All the Way Down' };
+const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
+// levels still in early access: playable once the code has been entered
+const EARLY_MAPS = ['l2', 'l3'];
 
 function loadSettings() {
   let saved = {};
@@ -16,8 +18,8 @@ function loadSettings() {
   Settings.rdist = [30, 50, 80, 140].includes(saved.rdist) ? saved.rdist : 80;
   Settings.net = saved.net === 'relay' ? 'relay' : 'auto';
   Settings.whisper = saved.whisper !== false;
-  Settings.early = saved.early === true;   // Seize - B5 unlocked with the early access code
-  Settings.map = saved.map === 'camp' ? 'camp' : saved.map === 'l2' && Settings.early ? 'l2' : 'l1';
+  Settings.early = saved.early === true;   // Seize - B5 and Breach - A1 unlocked with the early access code
+  Settings.map = saved.map === 'camp' ? 'camp' : EARLY_MAPS.includes(saved.map) && Settings.early ? saved.map : 'l1';
   Settings.ui = [0.7, 0.85, 1].includes(saved.ui) ? saved.ui : 0.85;
   applyUiSize();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
@@ -57,19 +59,20 @@ function renderSwatches() {
 function applyUiSize() { $('hud').style.setProperty('--ui', String(Settings.ui)); }
 function renderMaps() {
   document.querySelectorAll('#maps .map').forEach((b) => {
-    if (b.dataset.map === 'l2') {
-      // Seize - B5 is still coming soon - unless this player has entered the early access code
+    const ea = EARLY_MAPS.indexOf(b.dataset.map);
+    if (ea >= 0) {
+      // still coming soon - unless this player has entered the early access code
       const open = !!Settings.early;
       b.classList.toggle('locked', !open);
-      setText(b.querySelector('.mn'), open ? 'Level 2 · Early access' : 'Level 2 · Coming soon');
+      setText(b.querySelector('.mn'), 'Level ' + (ea + 2) + ' · ' + (open ? 'Early access' : 'Coming soon'));
     }
     const on = b.dataset.map === Settings.map; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
   });
 }
 // the early access code was right: open Seize - B5 and pick it
-function unlockEarlyAccess() {
-  Settings.early = true; Settings.map = 'l2'; saveSettings(); renderMaps();
-  netNote('Early access unlocked. Seize - B5 is selected.');
+function unlockEarlyAccess(want) {
+  Settings.early = true; Settings.map = EARLY_MAPS.includes(want) ? want : 'l2'; saveSettings(); renderMaps();
+  netNote('Early access unlocked: Seize - B5 and Breach - A1. ' + MAP_NAMES[Settings.map].split(' · ')[0] + ' is selected.');
 }
 function wireSegs(id, key, apply, parse = (v) => v) {
   const box = $(id);
@@ -100,7 +103,7 @@ function setMode(m) {
 // Only one level's world exists at a time: switching tears the old one down and builds the next. Reach - B4
 // is the one standing behind the menu (the opening and the lobby are set in it).
 const _waitFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-function levelForMap(map) { return map === 'l2' ? 'l2' : 'l1'; }
+function levelForMap(map) { return map === 'camp' ? Game.campLv || 'l1' : LEVELS[map] ? map : 'l1'; }
 function disposeTree(o) {
   const shared = new Set(GeoCache.values());
   o.traverse((n) => { if (n.geometry && !shared.has(n.geometry) && !(n.geometry.userData && n.geometry.userData.ni)) n.geometry.dispose(); });
@@ -111,7 +114,9 @@ function resetLevelState() {
   OCC.cache.clear(); OCC.slot = []; OCC.mate = []; R.poolPicked = null;
   for (const u of WS.occPt.value) u.w = -1;
   Creature.inited = false; Creature.override = null;
-  setChudVisible(false);
+  setChudVisible(false); setPaleVisible(false); PS.init = false; CS.init = false;
+  Breach.hatch = null; Breach.silo = null;
+  if (R.key) { R.key.intensity = 0; R.backlight.intensity = 0; }
 }
 async function loadLevel(lv, say = () => {}) {
   if (Game.levelKey === lv && Game.L) return;
@@ -129,6 +134,7 @@ async function loadLevel(lv, say = () => {}) {
     buildDynamic(Game.L);
     R.scene.add(World.group);
     if (LEVELS[lv].monster === 'chud' && !Chud.ready) { say('Something heavy is moving…'); await _waitFrame(); buildChud(R.scene); }
+    if (LEVELS[lv].monster === 'pale' && !Pale.ready) { say('Something is standing very still…'); await _waitFrame(); buildPale(R.scene); }
     say('Warming up…'); await _waitFrame();
     World.areas.forEach((a) => { a.group.visible = true; });
     try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled lazily instead */ }
@@ -357,7 +363,7 @@ function wireMenus() {
   renderSwatches(); renderMaps(); wireKeypad();
   $('maps').addEventListener('click', (e) => {
     const b = e.target.closest('.map'); if (!b) return;
-    if (b.classList.contains('locked')) { openAccessPad(); return; }
+    if (b.classList.contains('locked')) { openAccessPad(b.dataset.map); return; }
     Settings.map = b.dataset.map; saveSettings(); renderMaps();
   });
   wireSegs('uisize', 'ui', applyUiSize, Number);
@@ -409,17 +415,23 @@ function wireMenus() {
   });
   $('btn-resume').addEventListener('click', () => { $('pause').hidden = true; Game.paused = false; lockPointer(true); });
   $('btn-quit').addEventListener('click', async () => { $('pause').hidden = true; await backToLobby(); });
-  $('btn-again').addEventListener('click', () => { if (Net.mode === 'solo' || netIsHost()) startGame(); });
+  $('btn-again').addEventListener('click', () => {
+    if (!(Net.mode === 'solo' || netIsHost())) return;
+    // the campaign goes on to the next level, or back to the start
+    if (Settings.map === 'camp') Game.campLv = Game.endNext || 'l1';
+    startGame();
+  });
   $('btn-menu').addEventListener('click', backToLobby);
 }
 async function backToLobby() {
   resetEnding();
+  Game.campLv = 'l1'; Game.endNext = null;
   if (Net.mode !== 'solo') { await netLeave(); netNote(readyNote(), !NetCaps.online); }
   Game.g = null; Game.round = -1; Game.me = null;
   for (const [, m] of Game.mates) R.scene.remove(m.h.root);
   Game.mates.clear();
   updateCreature(0, 0, { mode: 'hidden' }, Game.L, R.camera.position);
-  setChudVisible(false);
+  setChudVisible(false); setPaleVisible(false);
   if (Game.levelKey !== 'l1') await showLevelLoading('l1');
   enterLobbyScene();
 }
@@ -606,12 +618,14 @@ function tickFrame(now) {
       if (!Game.paused) updateLocalPlayer(dt, t);
       R.fade = damp(R.fade, 0, 2.5, dt);
       // what is waiting at the bottom gets built a little at a time while the team is on the last floors
-      if (!Chud.ready && Game.g.ca >= 8) chudBuildStep(3, R.scene);
+      if (!Chud.ready && Game.g.lv === 'l1' && Game.g.ca >= 8) chudBuildStep(3, R.scene);
+      if (!Colossus.ready && Game.g.lv === 'l3' && Game.g.ca >= 3) colossusBuildStep(3, R.scene);
       processGameEvents();
       tickKeypad();
       // the level's monster is posed before anyone it is holding, and before the camera of whoever that is
       if (levelHasBeast(Game.g.lv)) { updateCreature(dt, t, { mode: 'hidden' }, Game.L, R.camera.position); updateBeastClient(dt, t); updateBeastKill(dt); }
       else { updateKill(dt); updateLairs(dt); }
+      if (Game.g.lv === 'l3') updateBreachWorld(dt, t);
       updateMates(dt, t);
       crd = updatePlayCamera(dt, t);
       if (!levelHasBeast(Game.g.lv)) updateCreature(dt, t, Game.g.cr, Game.L, R.camera.position);
@@ -660,7 +674,8 @@ function tickFrame(now) {
   if (Game.mode === 'play') R.fear = damp(R.fear, Math.max(crVisible ? clamp(1 - crd / 14, 0, 1) * (cr.mode === 'run' ? 1 : 0.55) : 0, threat * 0.85, R.fearKick), 3, dt);
   R.whiteFlash = Game.mode === 'end' ? R.whiteFlash : Math.max(0, R.whiteFlash - dt * 1.5);
   setAreaVisibility(ca, R.camera.position);
-  if (Game.mode === 'end' && Cinema.teaser) { R.hemi.intensity = 0.02; R.scene.fog.density = 0.035; } else updateAtmosphere(dt, ca);
+  if (Game.mode === 'end' && Cinema.surface) { /* the surface sets its own sky and light */ }
+  else if (Game.mode === 'end' && Cinema.teaser) { R.hemi.intensity = 0.02; R.scene.fog.density = 0.035; } else updateAtmosphere(dt, ca);
   if (Game.mode === 'play') updateLightPool(dt, R.camera, ca);
   adaptResolution(dt);
   renderFrame(t, dt);

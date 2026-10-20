@@ -69,7 +69,13 @@ function updateHud(dt) {
   $('stamina').style.opacity = st < 0.98 && !me.dead ? '1' : '0';
   $('stamina-fill').style.width = (st * 100).toFixed(1) + '%';
   // noise meter - or, on B5, where sound means nothing to it, whether you are showing a light
-  if (g.lv === 'l2') {
+  if (g.lv === 'l3') {
+    // on A1 the only thing that matters is whether you are moving
+    const th = paleThreat(), mv = clamp(me.speed / SPRINT_SPEED, 0, 1), moving = me.speed > 0.25;
+    $('noise').style.setProperty('--n', (moving ? 0.25 + mv * 0.75 : 0.03).toFixed(3));
+    setText($('noise-label'), !moving ? 'Still' : th > 0.2 ? 'Moving - it can see you' : me.speed > WALK_SPEED + 0.2 ? 'Running' : me.speed < CROUCH_SPEED + 0.1 ? 'Creeping' : 'Moving');
+    $('noise').classList.toggle('loud', moving && th > 0.15);
+  } else if (g.lv === 'l2') {
     const th = chudThreat();
     $('noise').style.setProperty('--n', (me.fl ? 0.75 + th * 0.25 : 0.05).toFixed(3));
     setText($('noise-label'), me.fl ? (th > 0.2 ? 'Light on - it can see it' : 'Light on') : 'Dark');

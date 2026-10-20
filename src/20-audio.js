@@ -36,6 +36,8 @@ const Sound = (() => {
     return p;
   }
   function setPos(p, x, y, z) {
+    // a position without a height (a point on the floor plan) sits at ear height
+    x = Number.isFinite(x) ? x : 0; y = Number.isFinite(y) ? y : 1.5; z = Number.isFinite(z) ? z : 0;
     if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; } else p.setPosition(x, y, z);
   }
   // route: a node into a 3D position (or straight to the bus), plus reverb
@@ -87,6 +89,8 @@ const Sound = (() => {
     pump: { drone: 0.5, water: 0.9, machine: 0.5 }, contain: { drone: 0.7, hum: 0.3, air: 0.4 }, generator: { drone: 0.6, machine: 0.6, air: 0.3 },
     lift: { drone: 0.7, wind: 0.5, air: 0.3 }, title: { drone: 0.8, air: 0.6 }, elevator: { drone: 0.5, machine: 0.8 }, silent: {},
     landing: { drone: 0.55, air: 0.25, wind: 0.2 }, ward: { drone: 0.6, air: 0.3, water: 0.05 }, dayroom: { drone: 0.5, air: 0.35, wind: 0.25 }, oldwing: { drone: 0.7, wind: 0.35 },
+    bunker: { drone: 0.55, hum: 0.35, air: 0.4 }, decon: { drone: 0.45, hum: 0.3, water: 0.2, air: 0.3 }, barracks: { drone: 0.5, hum: 0.25, air: 0.35 }, command: { drone: 0.45, hum: 0.5, fans: 0.3 },
+    silo: { drone: 0.7, wind: 0.45, air: 0.4, machine: 0.15 }, surface: { wind: 1.0, drone: 0.25 },
   };
   function setTheme(name, extra = {}) {
     if (!ctx) return;
@@ -388,6 +392,74 @@ const Sound = (() => {
       case 'piano': { const P = far(pos, 5, 0.9), notes = [196, 220, 233, 262, 294, 311], f = notes[Math.floor(Math.random() * notes.length)];
         for (const [m, v, d] of [[1, 0.09, 3.2], [2.003, 0.035, 2.2], [3.01, 0.018, 1.5], [1.006, 0.06, 3.0]]) tone(t, f * m, d, 'triangle', v, P, f * m * 0.998, 0.75, sfx, 0.004);
         noiseHit(t, 0.03, 'bandpass', 2600, 2, 0.05, P, 0.4);
+        break; }
+      // ---------- the Pale ----------
+      // bare feet: a quick soft slap, the toes after it
+      case 'paleStep': { const P = far(pos, 3, 1.2);
+        noiseHit(t, 0.05, 'bandpass', rr(900, 1300), 1.4, 0.32, P, 0.3); noiseHit(t + rr(0.03, 0.05), 0.03, 'bandpass', rr(1800, 2600), 2, 0.12, P, 0.2);
+        tone(t, rr(85, 110), 0.08, 'sine', 0.12, P, 60, 0.2);
+        break; }
+      // the clicking in its throat: a dry rattle of teeth, fast, then a slower one
+      case 'paleClick': { const P = far(pos, 4, 1.0), n = 5 + Math.floor(Math.random() * 7), gap = rr(0.035, 0.06);
+        for (let i = 0; i < n; i++) { const st = t + i * gap * (1 + i * 0.06); noiseHit(st, 0.012, 'bandpass', rr(2400, 3600), 6, 0.22, P, 0.35); tone(st, rr(700, 900), 0.02, 'square', 0.02, P, 0, 0.3, sfx, 0.001); }
+        break; }
+      // when it sees you: a shriek like metal on metal, a breath drawn in through all those teeth
+      case 'paleShriek': { const P = far(pos, 8, 0.85);
+        duck(0.5, 0.1, 0.6);
+        const g = gain(0); env(g, t, 0.03, 0.75, 0.5, 0.6);
+        const shaper = ctx.createWaveShaper(); const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 5); } shaper.curve = curve; shaper.connect(g);
+        for (const [f0, det] of [[rr(1150, 1350), 0], [rr(1550, 1750), 7], [rr(620, 700), -4]]) {
+          const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0 * 0.8, t); o.frequency.linearRampToValueAtTime(f0 * 1.08, t + 0.15); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + 1.1);
+          o.detune.value = det * 10;
+          const lfo = ctx.createOscillator(); lfo.frequency.value = rr(28, 40); const lg = gain(f0 * 0.04); lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(t + 1.2);
+          const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0 * 1.4; bp.Q.value = 2; o.connect(bp); bp.connect(gain(0.35, shaper)); o.start(t); o.stop(t + 1.2);
+        }
+        out(g, P, sfx, 0.7);
+        noiseHit(t, 1.0, 'highpass', 3500, 1, 0.2, P, 0.6);
+        break; }
+      // a neck going: a wet crack, and the grind after it
+      case 'neckSnap': { const P = far(pos, 5, 1.0);
+        noiseHit(t, 0.03, 'highpass', 2600, 1, 1.1, P, 0.4); noiseHit(t, 0.09, 'bandpass', 900, 2, 0.9, P, 0.4); tone(t, 140, 0.12, 'triangle', 0.4, P, 60, 0.3);
+        for (let i = 0; i < 6; i++) noiseHit(t + 0.05 + i * rr(0.02, 0.04), 0.02, 'bandpass', rr(1500, 3000), 4, 0.25, P, 0.3);
+        squelch(t + 0.06, P, 0.6);
+        break; }
+      // ---------- the hatch ----------
+      // a bunker klaxon: two tones, rasping, going round
+      case 'klaxon': { const P = far(pos, 14, 0.7);
+        for (let i = 0; i < 3; i++) { const st = t + i * 0.7; tone(st, 440, 0.32, 'sawtooth', 0.11, P, 430, 0.6); tone(st + 0.35, 330, 0.32, 'sawtooth', 0.11, P, 325, 0.6); }
+        break; }
+      // one of the hatch's locking dogs drawing back: a deep clank, a hiss of air
+      case 'hatchBolt': { const P = far(pos, 16, 0.6);
+        noiseHit(t, 0.4, 'lowpass', 220, 1, 1.4, P, 0.9); tone(t, 62, 0.6, 'sine', 0.9, P, 40, 0.7);
+        for (const f of [180, 290, 470]) tone(t, f * rr(0.97, 1.03), 1.2, 'triangle', 0.05, P, f * 0.98, 0.8);
+        noiseHit(t + 0.15, 1.1, 'highpass', 2200, 0.7, 0.25, P, 0.6);
+        break; }
+      // the hatch cracking open: steel grinding on steel, a rush of outside air
+      case 'hatchOpen': { const P = far(pos, 20, 0.5);
+        duck(0.7, 0.4, 2.0);
+        { const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 7; f.frequency.setValueAtTime(180, t); f.frequency.linearRampToValueAtTime(420, t + 3);
+          const g = gain(0); env(g, t, 0.2, 0.9, 2.2, 1.2); src.connect(f); f.connect(g); out(g, P, sfx, 0.8); src.start(t); src.stop(t + 4); }
+        tone(t, 38, 3.6, 'sawtooth', 0.35, P, 52, 0.8);
+        noiseHit(t + 0.8, 3.5, 'bandpass', 600, 0.4, 0.5, P, 0.7);
+        break; }
+      // something the size of a building, a long way off: a boom you feel in your chest
+      case 'colossus': { const P = far(pos, 60, 0.3);
+        duck(0.8, 0.5, 3.0);
+        tone(t, 24, 4.0, 'sine', 1.4, P, 18, 0.9); tone(t, 36, 3.0, 'triangle', 0.5, P, 28, 0.9);
+        noiseHit(t, 3.5, 'lowpass', 90, 1, 1.6, P, 0.95);
+        noiseHit(t + 0.4, 4.0, 'bandpass', 320, 0.5, 0.25, P, 0.95);
+        break; }
+      // its voice, if it is a voice: a moan so low it is mostly the ground shaking
+      case 'colossusCall': { const P = far(pos, 80, 0.25);
+        const g = gain(0); env(g, t, 1.2, 0.9, 2.5, 3.0);
+        for (const [f, v] of [[31, 1], [46.5, 0.55], [62, 0.3], [93, 0.12]]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.86, t + 6.5); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; o.connect(lp); lp.connect(gain(v * 0.35, g)); o.start(t); o.stop(t + 7); }
+        out(g, P, sfx, 0.95);
+        break; }
+      // bones going in a fist the size of a car
+      case 'crush': { const P = far(pos, 12, 0.7);
+        for (let i = 0; i < 14; i++) noiseHit(t + i * rr(0.025, 0.06), rr(0.02, 0.06), 'bandpass', rr(700, 2600), 3, rr(0.3, 0.6), P, 0.5);
+        noiseHit(t, 0.6, 'lowpass', 200, 1, 1.2, P, 0.6); tone(t, 70, 0.6, 'sine', 0.7, P, 35, 0.5);
+        squelch(t + 0.1, P, 1); squelch(t + 0.35, P, 0.8);
         break; }
       // an old lift's bell: one brass ding as the car settles at a floor
       case 'bell': { const P = far(pos, 4, 1.0);

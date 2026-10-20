@@ -143,6 +143,7 @@ function teaserShading(on) {
 // ---------- the ending itself ----------
 function startEnding() {
   if (Game.levelKey === 'l2') { startSeizeEnding(); return; }
+  if (Game.levelKey === 'l3') { startBreachEnding(); return; }
   Cinema.endKind = 'l1';
   Cinema.mode = 'ending';
   setMode('end');
@@ -226,13 +227,14 @@ function endingLeave() {
   if (Chud.root) Chud.root.visible = false;
   Sound.chudBreath({ x: 0, y: 0, z: 0 }, false);
   R.key.intensity = 0; R.backlight.intensity = 0;
-  seizeEndingLeave();
+  seizeEndingLeave(); breachEndingLeave();
   Cinema.teaser = false; Cinema.zOpen = undefined;
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
 }
 const _ecLook = new THREE.Vector3();
 function updateEnding(dt, t) {
   if (Cinema.endKind === 'l2') { updateSeizeEnding(dt, t); return; }
+  if (Cinema.endKind === 'l3') { updateBreachEnding(dt, t); return; }
   // the Chud gets built a slice at a time while the doors are still shutting
   if (!Chud.ready) chudBuildStep(5, R.scene);
   Cinema.t += dt; runCues();
@@ -369,6 +371,12 @@ function endStats() {
   return { time: Math.max(0, Math.floor(end - start)), taken: g.kc || 0, team, camp: g.mp === 'camp' };
 }
 // ---------- results and credits ----------
+const LEVEL_END = {
+  l1: { n: 1, title: 'Reach - B4', made: 'into the lift', tail: 'It didn\'t stop at the bottom.' },
+  l2: { n: 2, title: 'Seize - B5', made: 'into the lift', tail: 'It went up.' },
+  l3: { n: 3, title: 'Breach - A1', made: 'up through the hatch', tail: 'There is nothing left up there. Nearly nothing.' },
+};
+const NEXT_LEVEL = { l1: 'l2', l2: 'l3' };
 function showEndScreen() {
   if (Cinema.mode !== 'ending' && Cinema.mode !== 'credits') return;
   endingLeave();
@@ -378,15 +386,17 @@ function showEndScreen() {
   R.whiteFlash = 0; R.fade = 1; R.fear = 0;
   const S = Cinema.stats || endStats();
   const nc = $('next-card'); nc.classList.remove('show', 'soon'); nc.hidden = true;
-  const two = Game.levelKey === 'l2', nA = Game.L ? Game.L.areas.length : 10;
-  setText($('end-kicker'), two ? 'Level 2 · Complete' : S.camp ? 'Campaign · Level 1 of 2 complete' : 'Level 1 · Complete');
-  setText($('end-title'), two ? 'Seize - B5' : 'Reach - B4');
+  const lv = LEVEL_END[Game.levelKey] ? Game.levelKey : 'l1', E = LEVEL_END[lv], nA = Game.L ? Game.L.areas.length : 10, next = NEXT_LEVEL[lv];
+  setText($('end-kicker'), S.camp ? 'Campaign · Level ' + E.n + ' of 3 complete' : 'Level ' + E.n + ' · Complete');
+  setText($('end-title'), E.title);
   const out = S.team.filter((m) => m.out).length, solo = S.team.length <= 1;
-  const tail = two ? 'It went up.' : 'It didn\'t stop at the bottom.';
-  setText($('end-sub'), (solo ? 'You made it into the lift. ' : out === S.team.length ? 'Your whole team made it into the lift. ' : 'Some of you made it into the lift. ') + tail);
-  const next = two ? 'Breach - A1' : 'Seize - B5', open = two || Settings.early;
-  setText($('end-next-name'), next); setText($('end-next-note'), open ? 'Early access' : 'Coming soon');
-  setText($('cr-next'), next + ' · ' + (open ? 'Early access' : 'Coming soon'));
+  setText($('end-sub'), (solo ? 'You made it ' + E.made + '. ' : out === S.team.length ? 'Your whole team made it ' + E.made + '. ' : 'Some of you made it ' + E.made + '. ') + E.tail);
+  const open = !!next && !!Settings.early, nextName = next ? LEVELS[next].title : 'Level 4';
+  setText($('end-next-name'), nextName); setText($('end-next-note'), open ? 'Early access' : 'Coming soon');
+  setText($('cr-next'), nextName + ' · ' + (open ? 'Early access' : 'Coming soon'));
+  // the campaign goes straight on into the next level, if it is open to this player
+  Game.endNext = S.camp && open ? next : null;
+  setText($('btn-again'), Game.endNext ? 'Continue · ' + nextName : S.camp && lv !== 'l1' ? 'Start the campaign again' : 'Play again');
   const mm = Math.floor(S.time / 60), ss = String(S.time % 60).padStart(2, '0');
   const stats = [[mm + ':' + ss, 'Time'], [solo ? (out ? 'Yes' : 'No') : out + ' / ' + S.team.length, 'Made it out'], [String(S.taken), 'Times taken'], [nA + ' / ' + nA, 'Areas']];
   const box = $('end-stats'); box.textContent = '';
@@ -401,7 +411,7 @@ function showEndScreen() {
   }
   const canRestart = Net.mode === 'solo' || netIsHost();
   $('btn-again').hidden = !canRestart;
-  setText($('end-note'), S.camp ? 'The campaign carries on in Seize - B5 when it opens. ' + (canRestart ? '' : 'Waiting for the host.') : canRestart ? '' : 'Waiting for the host to start another run.');
+  setText($('end-note'), S.camp && next && !open ? 'The campaign carries on in ' + nextName + ' when it opens. ' + (canRestart ? '' : 'Waiting for the host.') : canRestart ? '' : 'Waiting for the host.');
   const end = $('end'); end.hidden = false; end.classList.remove('in'); void end.offsetWidth; end.classList.add('in');
   const roll = $('credits-roll'); roll.classList.remove('roll'); void roll.offsetWidth; roll.classList.add('roll');
   Sound.setTheme('title'); Sound.titleMusic(true);
@@ -694,8 +704,8 @@ function seizeEndingLeave() {
 function setNextCard(kick, a, b, note) {
   setText($('nc-kick'), kick);
   const h = $('nc-title'); h.textContent = '';
-  const dash = document.createElement('span'); dash.className = 'nc-dash'; dash.textContent = ' - ';
-  h.append(document.createTextNode(a), dash, document.createTextNode(b));
+  if (b) { const dash = document.createElement('span'); dash.className = 'nc-dash'; dash.textContent = ' - '; h.append(document.createTextNode(a), dash, document.createTextNode(b)); }
+  else h.append(document.createTextNode(a));
   setText($('nc-note'), note);
   $('next-card').hidden = true; $('next-card').className = 'fullscreen';
 }

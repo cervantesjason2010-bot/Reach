@@ -300,6 +300,7 @@ details.settings[open] summary { color: var(--ink); }
         <div id="maps" class="maps" role="radiogroup" aria-labelledby="map-label">
           <button class="map" data-map="l1" type="button" role="radio"><span class="mn">Level 1</span><b>Reach - B4</b><span class="md">Ten areas of a dead facility. Something tall that hunts by sound.</span></button>
           <button class="map locked" data-map="l2" type="button" role="radio"><span class="mn">Level 2 · Coming soon</span><b>Seize - B5</b><span class="md">No lights. Something huge that hunts by sight.</span><span class="ea">Have an early access code? Click to enter it.</span></button>
+          <button class="map locked" data-map="l3" type="button" role="radio"><span class="mn">Level 3 · Coming soon</span><b>Breach - A1</b><span class="md">The bunker under the surface. Something that only sees you move.</span><span class="ea">Have an early access code? Click to enter it.</span></button>
           <button class="map" data-map="camp" type="button" role="radio"><span class="mn">Campaign</span><b>All the Way Down</b><span class="md">Every level in order, one run. More levels are coming.</span></button>
         </div>
       </div>
@@ -970,7 +971,7 @@ function assembleLevel(maps) {
       if (c === 'w') L.water[i] = 1;
       if (c === '=') { L.low[i] = 1; L.ceil[i] = 1.45; }
       if (c === 'U') L.low[i] = 1;                     // under a rack: only crouched
-      if (c === 'z' || c === 'Z' || (ai === 0 && c === '@')) L.ceil[i] = 3.2;
+      if (c === 'z' || c === 'Z' || (ai === 0 && c === '@')) L.ceil[i] = c === 'z' && p.liftH ? p.liftH : 3.2;   // a platform under a shaft has the shaft over it
       const wx = gx + 0.5, wz = gz + 0.5;
       if (c === 'c') L.items.push({ id: 'crowbar', type: 'crowbar', area: ai, x: wx, z: wz });
       if (c === 'k') L.items.push({ id: 'key' + ai, type: 'keycard', area: ai, x: wx, z: wz });
@@ -1294,6 +1295,8 @@ const Sound = (() => {
     return p;
   }
   function setPos(p, x, y, z) {
+    // a position without a height (a point on the floor plan) sits at ear height
+    x = Number.isFinite(x) ? x : 0; y = Number.isFinite(y) ? y : 1.5; z = Number.isFinite(z) ? z : 0;
     if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; } else p.setPosition(x, y, z);
   }
   // route: a node into a 3D position (or straight to the bus), plus reverb
@@ -1345,6 +1348,8 @@ const Sound = (() => {
     pump: { drone: 0.5, water: 0.9, machine: 0.5 }, contain: { drone: 0.7, hum: 0.3, air: 0.4 }, generator: { drone: 0.6, machine: 0.6, air: 0.3 },
     lift: { drone: 0.7, wind: 0.5, air: 0.3 }, title: { drone: 0.8, air: 0.6 }, elevator: { drone: 0.5, machine: 0.8 }, silent: {},
     landing: { drone: 0.55, air: 0.25, wind: 0.2 }, ward: { drone: 0.6, air: 0.3, water: 0.05 }, dayroom: { drone: 0.5, air: 0.35, wind: 0.25 }, oldwing: { drone: 0.7, wind: 0.35 },
+    bunker: { drone: 0.55, hum: 0.35, air: 0.4 }, decon: { drone: 0.45, hum: 0.3, water: 0.2, air: 0.3 }, barracks: { drone: 0.5, hum: 0.25, air: 0.35 }, command: { drone: 0.45, hum: 0.5, fans: 0.3 },
+    silo: { drone: 0.7, wind: 0.45, air: 0.4, machine: 0.15 }, surface: { wind: 1.0, drone: 0.25 },
   };
   function setTheme(name, extra = {}) {
     if (!ctx) return;
@@ -1646,6 +1651,74 @@ const Sound = (() => {
       case 'piano': { const P = far(pos, 5, 0.9), notes = [196, 220, 233, 262, 294, 311], f = notes[Math.floor(Math.random() * notes.length)];
         for (const [m, v, d] of [[1, 0.09, 3.2], [2.003, 0.035, 2.2], [3.01, 0.018, 1.5], [1.006, 0.06, 3.0]]) tone(t, f * m, d, 'triangle', v, P, f * m * 0.998, 0.75, sfx, 0.004);
         noiseHit(t, 0.03, 'bandpass', 2600, 2, 0.05, P, 0.4);
+        break; }
+      // ---------- the Pale ----------
+      // bare feet: a quick soft slap, the toes after it
+      case 'paleStep': { const P = far(pos, 3, 1.2);
+        noiseHit(t, 0.05, 'bandpass', rr(900, 1300), 1.4, 0.32, P, 0.3); noiseHit(t + rr(0.03, 0.05), 0.03, 'bandpass', rr(1800, 2600), 2, 0.12, P, 0.2);
+        tone(t, rr(85, 110), 0.08, 'sine', 0.12, P, 60, 0.2);
+        break; }
+      // the clicking in its throat: a dry rattle of teeth, fast, then a slower one
+      case 'paleClick': { const P = far(pos, 4, 1.0), n = 5 + Math.floor(Math.random() * 7), gap = rr(0.035, 0.06);
+        for (let i = 0; i < n; i++) { const st = t + i * gap * (1 + i * 0.06); noiseHit(st, 0.012, 'bandpass', rr(2400, 3600), 6, 0.22, P, 0.35); tone(st, rr(700, 900), 0.02, 'square', 0.02, P, 0, 0.3, sfx, 0.001); }
+        break; }
+      // when it sees you: a shriek like metal on metal, a breath drawn in through all those teeth
+      case 'paleShriek': { const P = far(pos, 8, 0.85);
+        duck(0.5, 0.1, 0.6);
+        const g = gain(0); env(g, t, 0.03, 0.75, 0.5, 0.6);
+        const shaper = ctx.createWaveShaper(); const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 5); } shaper.curve = curve; shaper.connect(g);
+        for (const [f0, det] of [[rr(1150, 1350), 0], [rr(1550, 1750), 7], [rr(620, 700), -4]]) {
+          const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0 * 0.8, t); o.frequency.linearRampToValueAtTime(f0 * 1.08, t + 0.15); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + 1.1);
+          o.detune.value = det * 10;
+          const lfo = ctx.createOscillator(); lfo.frequency.value = rr(28, 40); const lg = gain(f0 * 0.04); lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(t + 1.2);
+          const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0 * 1.4; bp.Q.value = 2; o.connect(bp); bp.connect(gain(0.35, shaper)); o.start(t); o.stop(t + 1.2);
+        }
+        out(g, P, sfx, 0.7);
+        noiseHit(t, 1.0, 'highpass', 3500, 1, 0.2, P, 0.6);
+        break; }
+      // a neck going: a wet crack, and the grind after it
+      case 'neckSnap': { const P = far(pos, 5, 1.0);
+        noiseHit(t, 0.03, 'highpass', 2600, 1, 1.1, P, 0.4); noiseHit(t, 0.09, 'bandpass', 900, 2, 0.9, P, 0.4); tone(t, 140, 0.12, 'triangle', 0.4, P, 60, 0.3);
+        for (let i = 0; i < 6; i++) noiseHit(t + 0.05 + i * rr(0.02, 0.04), 0.02, 'bandpass', rr(1500, 3000), 4, 0.25, P, 0.3);
+        squelch(t + 0.06, P, 0.6);
+        break; }
+      // ---------- the hatch ----------
+      // a bunker klaxon: two tones, rasping, going round
+      case 'klaxon': { const P = far(pos, 14, 0.7);
+        for (let i = 0; i < 3; i++) { const st = t + i * 0.7; tone(st, 440, 0.32, 'sawtooth', 0.11, P, 430, 0.6); tone(st + 0.35, 330, 0.32, 'sawtooth', 0.11, P, 325, 0.6); }
+        break; }
+      // one of the hatch's locking dogs drawing back: a deep clank, a hiss of air
+      case 'hatchBolt': { const P = far(pos, 16, 0.6);
+        noiseHit(t, 0.4, 'lowpass', 220, 1, 1.4, P, 0.9); tone(t, 62, 0.6, 'sine', 0.9, P, 40, 0.7);
+        for (const f of [180, 290, 470]) tone(t, f * rr(0.97, 1.03), 1.2, 'triangle', 0.05, P, f * 0.98, 0.8);
+        noiseHit(t + 0.15, 1.1, 'highpass', 2200, 0.7, 0.25, P, 0.6);
+        break; }
+      // the hatch cracking open: steel grinding on steel, a rush of outside air
+      case 'hatchOpen': { const P = far(pos, 20, 0.5);
+        duck(0.7, 0.4, 2.0);
+        { const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 7; f.frequency.setValueAtTime(180, t); f.frequency.linearRampToValueAtTime(420, t + 3);
+          const g = gain(0); env(g, t, 0.2, 0.9, 2.2, 1.2); src.connect(f); f.connect(g); out(g, P, sfx, 0.8); src.start(t); src.stop(t + 4); }
+        tone(t, 38, 3.6, 'sawtooth', 0.35, P, 52, 0.8);
+        noiseHit(t + 0.8, 3.5, 'bandpass', 600, 0.4, 0.5, P, 0.7);
+        break; }
+      // something the size of a building, a long way off: a boom you feel in your chest
+      case 'colossus': { const P = far(pos, 60, 0.3);
+        duck(0.8, 0.5, 3.0);
+        tone(t, 24, 4.0, 'sine', 1.4, P, 18, 0.9); tone(t, 36, 3.0, 'triangle', 0.5, P, 28, 0.9);
+        noiseHit(t, 3.5, 'lowpass', 90, 1, 1.6, P, 0.95);
+        noiseHit(t + 0.4, 4.0, 'bandpass', 320, 0.5, 0.25, P, 0.95);
+        break; }
+      // its voice, if it is a voice: a moan so low it is mostly the ground shaking
+      case 'colossusCall': { const P = far(pos, 80, 0.25);
+        const g = gain(0); env(g, t, 1.2, 0.9, 2.5, 3.0);
+        for (const [f, v] of [[31, 1], [46.5, 0.55], [62, 0.3], [93, 0.12]]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 0.86, t + 6.5); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220; o.connect(lp); lp.connect(gain(v * 0.35, g)); o.start(t); o.stop(t + 7); }
+        out(g, P, sfx, 0.95);
+        break; }
+      // bones going in a fist the size of a car
+      case 'crush': { const P = far(pos, 12, 0.7);
+        for (let i = 0; i < 14; i++) noiseHit(t + i * rr(0.025, 0.06), rr(0.02, 0.06), 'bandpass', rr(700, 2600), 3, rr(0.3, 0.6), P, 0.5);
+        noiseHit(t, 0.6, 'lowpass', 200, 1, 1.2, P, 0.6); tone(t, 70, 0.6, 'sine', 0.7, P, 35, 0.5);
+        squelch(t + 0.1, P, 1); squelch(t + 0.35, P, 0.8);
         break; }
       // an old lift's bell: one brass ding as the car settles at a floor
       case 'bell': { const P = far(pos, 4, 1.0);
@@ -5887,7 +5960,8 @@ function dressBeams(L, B, a, ai, r) {
   for (let x = a.offX + 2; x < a.offX + a.w - 1; x += 4) {
     let run = -1;
     for (let z = a.offZ; z <= a.offZ + a.h; z++) {
-      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5;
+      // (a run stops where the ceiling height changes: a beam never crosses the mouth of a shaft)
+      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5 && (run < 0 || L.ceil[k(x, z)] === L.ceil[k(x, run)]);
       if (open && run < 0) run = z;
       if ((!open || z === a.offZ + a.h) && run >= 0) {
         const z1 = open ? z + 1 : z, len = z1 - run, ce = L.ceil[k(x, run)];
@@ -5903,7 +5977,7 @@ function dressBeams(L, B, a, ai, r) {
   for (let z = a.offZ + 1; z < a.offZ + a.h; z += 2) {
     let run = -1;
     for (let x = a.offX; x <= a.offX + a.w; x++) {
-      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5;
+      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5 && (run < 0 || L.ceil[k(x, z)] === L.ceil[k(run, z)]);
       if (open && run < 0) run = x;
       if ((!open || x === a.offX + a.w) && run >= 0) {
         const x1 = open ? x + 1 : x, len = x1 - run, ce = L.ceil[k(run, z)];
@@ -6631,7 +6705,7 @@ function patchLiftCells(L) {
   }
   // rooms built inside the tall halls get their own ceilings: the shelters, and the supervisor's office on the dock
   L.areas.forEach((A, ai) => {
-    if (!['dock', 'pump', 'generator', 'lift'].includes(A.theme)) return;
+    if (!['dock', 'pump', 'generator', 'lift', 'silo'].includes(A.theme)) return;
     const low = new Set();
     for (let z = A.offZ; z < A.offZ + A.h; z++) for (let x = A.offX; x < A.offX + A.w; x++) {
       const i = z * L.W + x;
@@ -7043,12 +7117,12 @@ function buildLiftDynamic(L) {
 function placeLift(p) {
   const S = LIFT.S, T = Lift.travel;
   for (const s of Lift.segs) {
-    const y = s.n * S - (T - p);
+    const y = (liftGoesUp() ? -1 : 1) * (s.n * S - (T - p));
     s.grp.position.y = y;
     s.grp.visible = y > -S - 0.5 && y < 3.6;
   }
   // the needle: B2 at p = 0, B4 at the end
-  const level = 2 + p / S;
+  const level = liftGoesUp() ? 5 - 5 * p / T : 2 + p / S;
   Lift.needle.rotation.z = Math.PI / 2 - (level / 10) * Math.PI;
 }
 // the ride: steady all the way down; when the power dies the car drops the last few centimetres of free cable
@@ -10535,7 +10609,7 @@ function beastEye(B, bone, x, y, z, r, s, opts = {}) {
 // a row of teeth along an arc: [y of the gum, which way they point (-1 down, 1 up), arc centre z, radius]
 function beastTeeth(B, bone, cy, dir, cz, rad, opts) {
   const T = new Batch(), r = mulberry32(opts.seed || 7), parent = new THREE.Group();
-  const tooth = plainMat(0xb8a478, { roughness: 0.32 }), rot = plainMat(0x5a4426, { roughness: 0.5 }), gum = plainMat(0x6a2a26, { roughness: 0.3 });
+  const tooth = opts.toothMat || plainMat(0xb8a478, { roughness: 0.32 }), rot = plainMat(0x5a4426, { roughness: 0.5 }), gum = opts.gumMat || plainMat(0x6a2a26, { roughness: 0.3 });
   const n = opts.n || 12, a0 = opts.a0 || -1.15, a1 = opts.a1 || 1.15, rest = B.rest[bone];
   for (let i = 0; i < n; i++) {
     if (opts.gap && opts.gap.includes(i)) continue;
@@ -11031,15 +11105,18 @@ const LEVELS = {
 const CODE_COLORS = ['#c8352c', '#2f6fd8', '#3aa84a', '#e2b52a'];
 const CODE_NAMES = ['red', 'blue', 'green', 'yellow'];
 // every keypad door gets four random digits, and the order its coloured lamps say to enter them in
-function seizeNewRound(g) {
-  const L = Game.L;
+function seizeCodes(g) {
   g.codes = {}; g.ord = {};
-  L.locks.forEach((lock, i) => {
+  Game.L.locks.forEach((lock, i) => {
     if (lock.type !== 'N') return;
     let c = ''; for (let k = 0; k < 4; k++) c += Math.floor(Math.random() * 10);
     const o = [0, 1, 2, 3]; for (let k = 3; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [o[k], o[j]] = [o[j], o[k]]; }
     g.codes[i] = c; g.ord[i] = o.join('');
   });
+}
+function seizeNewRound(g) {
+  const L = Game.L;
+  seizeCodes(g);
   const first = L.chudSpots.findIndex((s) => !!s);
   const sp = L.chudSpots[first] || { x: 0, z: 0 };
   g.ch = { x: r2(sp.x), z: r2(sp.z), y: 0, s: 0, m: first >= 0 ? 'idle' : 'hidden', a: first, lx: 0, lz: 0, gr: 0 };
@@ -11075,22 +11152,25 @@ function chudGrid(L) {
   return c;
 }
 const chudOk = (L, x, z) => { const gx = Math.floor(x), gz = Math.floor(z); return inGrid(L, gx, gz) && !!chudGrid(L)[gz * L.W + gx]; };
-function chudLine(L, ax, az, bx, bz) {
+function chudPath(L, sx, sz, tx, tz) { const grid = chudGrid(L); return navPath(L, (k) => !!grid[k], sx, sz, tx, tz); }
+// a straight walk between two points, every step of it on cells ok(k) allows
+function navLine(L, ok, ax, az, bx, bz) {
   const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.35);
-  for (let i = 1; i <= n; i++) if (!chudOk(L, ax + (bx - ax) * i / n, az + (bz - az) * i / n)) return false;
+  for (let i = 1; i <= n; i++) { const x = Math.floor(ax + (bx - ax) * i / n), z = Math.floor(az + (bz - az) * i / n); if (!inGrid(L, x, z) || !ok(z * L.W + x)) return false; }
   return true;
 }
-function chudPath(L, sx, sz, tx, tz) {
-  const W = L.W, grid = chudGrid(L);
+// A* over the cells ok(k) allows, smoothed into as few straight runs as it can
+function navPath(L, ok, sx, sz, tx, tz) {
+  const W = L.W, N = L.W * L.H, at = (k) => k >= 0 && k < N && ok(k);
   let s = Math.floor(sz) * W + Math.floor(sx), t = Math.floor(tz) * W + Math.floor(tx);
-  if (!grid[t]) {
+  if (!at(t)) {
     // aim for the nearest cell it can stand in
     let best = -1, bd = 1e9; const gx0 = Math.floor(tx), gz0 = Math.floor(tz);
-    for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) { const x = gx0 + dx, z = gz0 + dz; if (!inGrid(L, x, z) || !grid[z * W + x]) continue; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = z * W + x; } }
+    for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) { const x = gx0 + dx, z = gz0 + dz; if (!inGrid(L, x, z) || !at(z * W + x)) continue; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = z * W + x; } }
     if (best < 0) return null;
     t = best; tx = (t % W) + 0.5; tz = ((t / W) | 0) + 0.5;
   }
-  if (!grid[s]) return [{ x: tx, z: tz }];
+  if (!at(s)) return [{ x: tx, z: tz }];
   const g = new Map([[s, 0]]), came = new Map(), heap = new MinHeap(), closed = new Set();
   const tgx = t % W, tgz = (t / W) | 0;
   heap.push(0, s);
@@ -11104,7 +11184,7 @@ function chudPath(L, sx, sz, tx, tz) {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue;
       const nx = cx + dx, nz = cz + dz, nk = nz * W + nx;
-      if (!grid[nk] || (dx && dz && (!grid[cz * W + nx] || !grid[nz * W + cx]))) continue;
+      if (!at(nk) || (dx && dz && (!at(cz * W + nx) || !at(nz * W + cx)))) continue;
       const cost = g.get(cur) + (dx && dz ? 1.414 : 1);
       if (cost < (g.has(nk) ? g.get(nk) : 1e9)) { g.set(nk, cost); came.set(nk, cur); const ax = Math.abs(nx - tgx), az = Math.abs(nz - tgz); heap.push(cost + Math.max(ax, az) + 0.414 * Math.min(ax, az), nk); }
     }
@@ -11115,7 +11195,7 @@ function chudPath(L, sx, sz, tx, tz) {
   const pts = cells.map((k) => ({ x: (k % W) + 0.5, z: ((k / W) | 0) + 0.5 }));
   pts[pts.length - 1] = { x: tx, z: tz };
   const out = []; let from = { x: sx, z: sz }, i = 0;
-  while (i < pts.length) { let j = Math.min(pts.length - 1, i + 12); while (j > i && !chudLine(L, from.x, from.z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); from = pts[j]; i = j + 1; }
+  while (i < pts.length) { let j = Math.min(pts.length - 1, i + 12); while (j > i && !navLine(L, at, from.x, from.z, pts[j].x, pts[j].z)) j--; out.push(pts[j]); from = pts[j]; i = j + 1; }
   return out;
 }
 
@@ -11427,11 +11507,11 @@ function keypadTexts(title, help, close) { setText($('kp-title'), title); setTex
 
 // ---------- early access: the same keypad, in the menu, for the code that opens Seize - B5 early ----------
 const EARLY_CODE = '6020';
-function openAccessPad() {
+function openAccessPad(want) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  Game.keypad = { id: -1, access: true, entry: '' };
+  Game.keypad = { id: -1, access: true, entry: '', want };
   const box = $('keypad'), slots = $('kp-slots');
-  keypadTexts('Early access', 'Enter your code to play Seize - B5 early', 'Cancel · Esc');
+  keypadTexts('Early access', 'Enter your code to play Seize - B5 and Breach - A1 early', 'Cancel · Esc');
   slots.textContent = '';
   for (let i = 0; i < 4; i++) { const s = document.createElement('span'); s.style.borderColor = '#e8a33a'; s.style.color = '#e8e4da'; slots.appendChild(s); }
   box.hidden = false; box.classList.remove('wrong', 'right');
@@ -11441,8 +11521,9 @@ function openAccessPad() {
 function accessTry(code) {
   if (code !== EARLY_CODE) { Sound.play('beep'); keypadWrong(); return; }
   $('keypad').classList.remove('wrong'); $('keypad').classList.add('right'); Sound.play('pickup');
+  const want = Game.keypad && Game.keypad.want;
   Game.keypad = null;
-  setTimeout(() => { $('keypad').hidden = true; unlockEarlyAccess(); }, 650);
+  setTimeout(() => { $('keypad').hidden = true; unlockEarlyAccess(want); }, 650);
 }
 // the door opened (or you walked off, or died): put it away
 function tickKeypad() {
@@ -11479,10 +11560,19 @@ const INTRO_LINES = {
     coop: [['Recovery team, you are past B-4. The car is still going down.', 4], ['B-5 was sealed in 1979. Nobody has been down there since.', 4], ['Something is still down there with you. It cannot hear you.', 4], ['Do not let it see your light.', 3.5]],
     solo: [['Recovery, you are past B-4. The car is still going down.', 4], ['B-5 was sealed in 1979. Nobody has been down there since.', 4], ['Something is still down there with you. It cannot hear you.', 4], ['Do not let it see your light.', 3.5]],
   },
+  l3: {
+    coop: [['Recovery team, your car is going up. Past B-1. Past where the shaft ends.', 4], ['Above you is A-1: the civil defence bunker. Sealed from the inside.', 4], ['The garrison went quiet decades ago. Something kept the hatch shut.', 4], ['If it looks at you, do not move.', 3.5]],
+    solo: [['Recovery, your car is going up. Past B-1. Past where the shaft ends.', 4], ['Above you is A-1: the civil defence bunker. Sealed from the inside.', 4], ['The garrison went quiet decades ago. Something kept the hatch shut.', 4], ['If it looks at you, do not move.', 3.5]],
+  },
 };
 // the floors the car passes on the way down, and what the dial reads
-function liftFloorLabel(n) { return Game.levelKey === 'l2' ? ['B5', '', 'B4'][n] : 'B' + (4 - n); }
-function introFloorText(stopped, level) { return Game.levelKey === 'l2' ? (stopped ? 'Stopped · B-5' : 'Descending · ' + (level >= 4 ? 'B-5' : 'B-4')) : (stopped ? 'Stopped · ' : 'Descending · ') + 'B-' + level; }
+function liftFloorLabel(n) { return Game.levelKey === 'l3' ? ['A1', '', 'B5'][n] : Game.levelKey === 'l2' ? ['B5', '', 'B4'][n] : 'B' + (4 - n); }
+function introFloorText(stopped, level) {
+  if (Game.levelKey === 'l3') return stopped ? 'Stopped · A-1' : 'Ascending · ' + (level >= 4 ? 'A-1' : level >= 3 ? 'B-1' : 'B-5');
+  return Game.levelKey === 'l2' ? (stopped ? 'Stopped · B-5' : 'Descending · ' + (level >= 4 ? 'B-5' : 'B-4')) : (stopped ? 'Stopped · ' : 'Descending · ') + 'B-' + level;
+}
+// the car goes down to B4 and B5, and up to A1
+function liftGoesUp() { return Game.levelKey === 'l3'; }
 
 // ---------- whichever of them this level has ----------
 // B5 has the Chud; A1 has the Pale. Both are beasts (45-beast.js) with a kill of their own; this is how the
@@ -12362,6 +12452,676 @@ THEMES.oldwing.callButton = (g, D) => {
   const btn = new THREE.Mesh(cylGeo(0.035, 0.035, 0.03, 18), new THREE.MeshBasicMaterial({ color: 0xffb02e })); btn.rotation.x = Math.PI / 2; btn.position.set(0, 1.3, 0.03); g.add(btn); D.button = btn;
   const lbl = new THREE.Mesh(planeGeo(0.12, 0.04), labelMat('CALL', { fg: '#2a1e0a', w: 128, h: 48, size: 34, font: 'serif', weight: '700' })); lbl.position.set(0, 1.41, 0.022); g.add(lbl);
 };
+// ================= the Pale: what kept the hatch on A-1 shut =================
+// The bunker's last garrison went into the dark with their tags still on. What came back up is three metres of
+// skin over bone: arms to its knees, fingers like a hand of knives, a long skull with a mouth across all of
+// it, and two black beads deep in the sockets. It does not hear, and light means nothing to it. It sees
+// movement - only movement, but from a long way off - so the one thing that saves you is to stop. Stand still
+// and it will walk right up to you, lean in close, and look, and look; and if you so much as twitch, it has you.
+
+const P_SKIN = [0.58, 0.57, 0.55], P_BONE = [0.66, 0.64, 0.6], P_GREY = [0.46, 0.47, 0.49], P_SOCKET = [0.05, 0.04, 0.05];
+const P_MOUTH = [0.12, 0.03, 0.04], P_SHADOW = [0.42, 0.4, 0.4];
+const PALE_HEAD_BOX = [[-0.125, 2.5, -0.17], [0.125, 2.94, 0.19]];
+const PALE_HAND_BOX = [[0.38, 0.8, -0.08], [0.53, 1.235, 0.12]];
+const PALE_FOOT_BOX = [[0.05, -0.03, -0.1], [0.21, 0.13, 0.32]];
+const PALE_FINE = [PALE_HEAD_BOX, PALE_HAND_BOX, mirrorBox(PALE_HAND_BOX), PALE_FOOT_BOX, mirrorBox(PALE_FOOT_BOX)];
+// fingers: [z offset, first joint, second joint, thickness]
+const PALE_FINGERS = [[0.032, 0.11, 0.09, 1], [0.011, 0.122, 0.1, 1.05], [-0.01, 0.116, 0.096, 1], [-0.03, 0.096, 0.08, 0.88]];
+const PALE_TOES = [[0.103, 0.255], [0.118, 0.272], [0.133, 0.268], [0.148, 0.258], [0.161, 0.24]];
+// its ribs: one pair of arcs a rung, back to front, the lower ones flaring out past a waist there is nothing in
+const paleRibs = () => {
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const y = 2.17 - i * 0.056, q = (y - 2.0) / 0.26, w = 0.15 * Math.sqrt(Math.max(0, 1 - q * q)) + 0.012 + i * 0.002;
+    const bone = i < 5 ? 'chest' : 'spine';
+    out.push({ c: [0.04, y - 0.075, 0.104, w, y - 0.02, 0.03, 0.013, 0.015], bone, k: 0.016, sym: true, tint: P_BONE });
+    out.push({ c: [w, y - 0.02, 0.03, w * 0.72, y + 0.02, -0.1, 0.015, 0.013], bone, k: 0.016, sym: true });
+  }
+  return out;
+};
+const paleSpine = () => {
+  const out = [];
+  for (let i = 0; i < 13; i++) {
+    const y = 2.32 - i * 0.075, z = y > 1.86 ? -0.128 : y > 1.55 ? -0.098 : -0.106;
+    out.push({ e: [0, y, z, 0.017, 0.021, 0.019], bone: y > 1.86 ? 'chest' : y > 1.5 ? 'spine' : 'hips', k: 0.012, tint: P_BONE });
+  }
+  return out;
+};
+
+const PALE_DEF = {
+  name: 'pale', skin: P_SKIN, weightLam: 0.03,
+  bones: [
+    ['hips', null, [0, 1.36, -0.02]], ['spine', 'hips', [0, 1.62, -0.04]], ['chest', 'spine', [0, 1.98, -0.06]],
+    ['neck', 'chest', [0, 2.36, -0.04]], ['head', 'neck', [0, 2.58, 0.02]], ['jaw', 'head', [0, 2.635, 0.045]],
+    ['clavL', 'chest', [0.06, 2.28, -0.04]], ['armL', 'clavL', [0.25, 2.27, -0.06]],
+    ['elbowL', 'armL', [0.36, 1.72, -0.07]], ['handL', 'elbowL', [0.43, 1.2, -0.02]],
+    ['fingL', 'handL', [0.455, 1.055, 0.0]], ['tipL', 'fingL', [0.462, 0.94, 0.0]], ['thumbL', 'handL', [0.43, 1.12, 0.04]],
+    ['thighL', 'hips', [0.12, 1.32, 0.0]], ['shinL', 'thighL', [0.13, 0.72, 0.05]], ['footL', 'shinL', [0.13, 0.1, -0.01]], ['toeL', 'footL', [0.13, 0.03, 0.17]],
+  ],
+  shapes: [
+    // ---- the trunk: a narrow pelvis with the hip bones standing out, nothing at the waist, a cage of ribs
+    // under skin pulled tight, the spine a row of knuckles down the back, shoulder blades like wings ----
+    { e: [0, 1.38, -0.02, 0.13, 0.09, 0.092], bone: 'hips', k: 0.05 },
+    { e: [0.108, 1.455, 0.022, 0.038, 0.03, 0.05], bone: 'hips', k: 0.03, sym: true, tint: P_BONE },
+    { e: [0, 1.42, -0.1, 0.05, 0.05, 0.03], bone: 'hips', k: 0.03 },
+    { c: [0, 1.42, -0.025, 0, 1.8, -0.045, 0.082, 0.098], bone: 'spine', k: 0.05 },
+    { e: [0.04, 1.62, -0.072, 0.036, 0.13, 0.036], bone: 'spine', k: 0.03, sym: true },
+    { e: [0, 2.0, -0.035, 0.145, 0.22, 0.108], bone: 'chest', k: 0.05 },
+    { e: [0.068, 2.13, 0.035, 0.07, 0.06, 0.04], bone: 'chest', k: 0.03, sym: true },
+    { c: [0, 2.19, 0.098, 0, 1.92, 0.112, 0.018, 0.014], bone: 'chest', k: 0.02, tint: P_BONE },
+    ...paleRibs(),
+    ...paleSpine(),
+    { e: [0.1, 2.15, -0.112, 0.064, 0.086, 0.026], rot: [0, 0.3, 0.15], bone: 'chest', k: 0.025, sym: true, tint: P_BONE },
+    { c: [0.03, 2.38, -0.06, 0.2, 2.27, -0.05, 0.03, 0.02], bone: 'chest', k: 0.03, sym: true },
+    { c: [0.03, 2.27, 0.05, 0.22, 2.29, -0.01, 0.014, 0.012], bone: 'clavL', k: 0.015, sym: true, tint: P_BONE },
+    // under the ribs it caves right in
+    { e: [0, 1.74, 0.105, 0.085, 0.075, 0.045], bone: 'spine', k: 0.045, sub: true, tint: P_SHADOW },
+    // ---- the neck: long, corded, the tendons standing out ----
+    { c: [0, 2.3, -0.05, 0, 2.6, 0.0, 0.044, 0.037], bone: 'neck', k: 0.03 },
+    { c: [0.03, 2.28, 0.03, 0.034, 2.58, 0.048, 0.012, 0.01], bone: 'neck', k: 0.015, sym: true },
+    // ---- the head: a long skull, high at the back; a heavy brow over deep sockets; no nose, two slits; the
+    // cheekbones and the hinge of the jaw standing out of hollow cheeks; a mouth from one side to the other ----
+    { e: [0, 2.75, -0.005, 0.092, 0.125, 0.116], bone: 'head', k: 0.04 },
+    { e: [0, 2.78, -0.07, 0.082, 0.092, 0.07], bone: 'head', k: 0.04 },
+    { e: [0, 2.775, 0.094, 0.084, 0.022, 0.03], bone: 'head', k: 0.02, tint: P_BONE },
+    { e: [0.06, 2.705, 0.08, 0.03, 0.02, 0.04], bone: 'head', k: 0.015, sym: true, tint: P_BONE },
+    { e: [0, 2.665, 0.085, 0.06, 0.055, 0.06], bone: 'head', k: 0.03 },
+    { e: [0.07, 2.64, 0.03, 0.02, 0.025, 0.02], bone: 'head', k: 0.015, sym: true, tint: P_BONE },
+    { e: [0, 2.643, 0.132, 0.056, 0.01, 0.02], bone: 'head', k: 0.01, tint: P_SHADOW },
+    { e: [0, 2.602, 0.07, 0.064, 0.034, 0.07], bone: 'jaw', k: 0.025 },
+    { e: [0, 2.586, 0.114, 0.025, 0.02, 0.02], bone: 'jaw', k: 0.015, tint: P_BONE },
+    { e: [0, 2.624, 0.128, 0.05, 0.009, 0.02], bone: 'jaw', k: 0.01, tint: P_SHADOW },
+    // ---- the arms: no muscle on them at all, knobs at the elbow and the wrist ----
+    { e: [0.24, 2.26, -0.05, 0.058, 0.054, 0.058], bone: 'armL', k: 0.03, sym: true },
+    { c: [0.25, 2.25, -0.06, 0.36, 1.74, -0.07, 0.04, 0.031], bone: 'armL', k: 0.025, sym: true },
+    { e: [0.3, 2.05, -0.035, 0.024, 0.09, 0.024], bone: 'armL', k: 0.02, sym: true },
+    { e: [0.364, 1.72, -0.098, 0.028, 0.034, 0.028], bone: 'elbowL', k: 0.015, sym: true, tint: P_BONE },
+    { c: [0.36, 1.72, -0.07, 0.43, 1.22, -0.02, 0.033, 0.021], bone: 'elbowL', k: 0.02, sym: true },
+    { e: [0.4, 1.5, -0.022, 0.019, 0.12, 0.019], bone: 'elbowL', k: 0.015, sym: true },
+    { e: [0.44, 1.222, -0.034, 0.015, 0.015, 0.015], bone: 'elbowL', k: 0.01, sym: true, tint: P_BONE },
+    // ---- the hands: narrow, and the fingers half as long again as they should be ----
+    { e: [0.445, 1.13, 0.0, 0.016, 0.075, 0.041], bone: 'handL', k: 0.015, sym: true, tint: P_GREY },
+    { c: [0.43, 1.12, 0.04, 0.44, 1.05, 0.075, 0.011, 0.009], bone: 'thumbL', k: 0.01, sym: true, tint: P_GREY },
+    { c: [0.44, 1.05, 0.075, 0.445, 0.985, 0.09, 0.009, 0.007], bone: 'thumbL', k: 0.008, sym: true, tint: P_GREY },
+    ...PALE_FINGERS.flatMap(([o, l1, l2, s]) => {
+      const y1 = 1.055 - l1, y2 = y1 - l2;
+      return [
+        { e: [0.457, 1.055, o, 0.011 * s, 0.012 * s, 0.011 * s], bone: 'fingL', k: 0.008, sym: true, tint: P_GREY },
+        { c: [0.455, 1.055, o, 0.462, y1, o, 0.0105 * s, 0.009 * s], bone: 'fingL', k: 0.008, sym: true, tint: P_GREY },
+        { e: [0.462, y1, o, 0.0105 * s, 0.011 * s, 0.0105 * s], bone: 'tipL', k: 0.006, sym: true, tint: P_GREY },
+        { c: [0.462, y1, o, 0.466, y2, o, 0.0088 * s, 0.0072 * s], bone: 'tipL', k: 0.007, sym: true, tint: P_GREY },
+      ];
+    }),
+    // ---- the legs: long, thin, the knees like fists ----
+    { c: [0.12, 1.33, 0.0, 0.13, 0.74, 0.05, 0.064, 0.044], bone: 'thighL', k: 0.03, sym: true },
+    { e: [0.13, 1.08, 0.04, 0.044, 0.16, 0.044], bone: 'thighL', k: 0.025, sym: true },
+    { e: [0.158, 1.28, 0.0, 0.03, 0.035, 0.03], bone: 'thighL', k: 0.02, sym: true, tint: P_BONE },
+    { e: [0.13, 0.73, 0.05, 0.044, 0.05, 0.044], bone: 'shinL', k: 0.02, sym: true },
+    { e: [0.13, 0.735, 0.098, 0.034, 0.038, 0.027], bone: 'shinL', k: 0.015, sym: true, tint: P_BONE },
+    { c: [0.13, 0.72, 0.05, 0.13, 0.12, 0.0, 0.039, 0.025], bone: 'shinL', k: 0.02, sym: true },
+    { e: [0.13, 0.55, 0.0, 0.034, 0.1, 0.034], bone: 'shinL', k: 0.02, sym: true },
+    { c: [0.13, 0.68, 0.085, 0.13, 0.2, 0.04, 0.012, 0.01], bone: 'shinL', k: 0.012, sym: true, tint: P_BONE },
+    { e: [0.155, 0.1, -0.01, 0.015, 0.018, 0.018], bone: 'shinL', k: 0.01, sym: true, tint: P_BONE },
+    { e: [0.105, 0.11, -0.005, 0.014, 0.016, 0.016], bone: 'shinL', k: 0.01, sym: true, tint: P_BONE },
+    // ---- the feet: long, narrow, toes like fingers ----
+    { e: [0.13, 0.045, 0.06, 0.034, 0.03, 0.115], bone: 'footL', k: 0.02, sym: true, tint: P_GREY },
+    { e: [0.13, 0.045, -0.05, 0.03, 0.035, 0.035], bone: 'footL', k: 0.02, sym: true, tint: P_GREY },
+    ...PALE_TOES.map(([x, z]) => ({ c: [x, 0.03, 0.16, x + (x - 0.13) * 0.2, 0.016, z, 0.011, 0.008], bone: 'toeL', k: 0.008, sym: true, tint: P_GREY })),
+    // ---- cut back in: the temples and cheeks hollow, the sockets, the slits, the ears, the mouth ----
+    { e: [0.094, 2.74, 0.04, 0.02, 0.035, 0.03], bone: 'head', k: 0.02, sym: true, sub: true, tint: P_SHADOW },
+    { e: [0.07, 2.652, 0.08, 0.02, 0.03, 0.035], bone: 'head', k: 0.02, sym: true, sub: true, tint: P_SHADOW },
+    { e: [0.037, 2.735, 0.114, 0.026, 0.02, 0.025], bone: 'head', k: 0.012, sym: true, sub: true, tint: P_SOCKET },
+    { e: [0.009, 2.69, 0.142, 0.006, 0.018, 0.014], bone: 'head', k: 0.006, sym: true, sub: true, tint: P_SOCKET },
+    { e: [0.097, 2.7, 0.0, 0.008, 0.012, 0.01], bone: 'head', k: 0.006, sym: true, sub: true, tint: P_SOCKET },
+    { e: [0, 2.633, 0.14, 0.058, 0.007, 0.05], bone: 'head', k: 0.008, sub: true, tint: P_MOUTH, wet: 0.6 },
+  ],
+  parts: [
+    { name: 'body', lo: [-0.56, -0.05, -0.24], hi: [0.56, 3.0, 0.36], h: 0.014, keep: (x, y, z) => !PALE_FINE.some((b) => inBox(b, x, y, z, 0.014)) },
+    { name: 'head', fine: true, lo: growBox(PALE_HEAD_BOX, 0.03)[0], hi: growBox(PALE_HEAD_BOX, 0.03)[1], h: 0.006, keep: (x, y, z) => inBox(PALE_HEAD_BOX, x, y, z) },
+    { name: 'handL', fine: true, lo: growBox(PALE_HAND_BOX, 0.03)[0], hi: growBox(PALE_HAND_BOX, 0.03)[1], h: 0.0055, keep: (x, y, z) => inBox(PALE_HAND_BOX, x, y, z) },
+    { name: 'handR', fine: true, lo: growBox(mirrorBox(PALE_HAND_BOX), 0.03)[0], hi: growBox(mirrorBox(PALE_HAND_BOX), 0.03)[1], h: 0.0055, keep: (x, y, z) => inBox(mirrorBox(PALE_HAND_BOX), x, y, z) },
+    { name: 'footL', fine: true, lo: growBox(PALE_FOOT_BOX, 0.03)[0], hi: growBox(PALE_FOOT_BOX, 0.03)[1], h: 0.008, keep: (x, y, z) => inBox(PALE_FOOT_BOX, x, y, z) },
+    { name: 'footR', fine: true, lo: growBox(mirrorBox(PALE_FOOT_BOX), 0.03)[0], hi: growBox(mirrorBox(PALE_FOOT_BOX), 0.03)[1], h: 0.008, keep: (x, y, z) => inBox(mirrorBox(PALE_FOOT_BOX), x, y, z) },
+  ],
+  // the lips part cleanly along the line of the mouth
+  weightFix(x, y, z, acc, bi) {
+    if (z < 0.09 || Math.abs(x) > 0.075 || y < 2.57 || y > 2.7) return;
+    const line = 2.633 + 0.4 * x * x, k = smoothstep(line - 0.004, line + 0.004, y);
+    const head = acc[bi.head], jaw = acc[bi.jaw], tot = head + jaw;
+    if (tot <= 0) return;
+    const keepK = smoothstep(0.06, 0.075, Math.abs(x));
+    acc[bi.head] = lerp(tot * k, head, keepK); acc[bi.jaw] = lerp(tot * (1 - k), jaw, keepK);
+  },
+  jiggle: {},
+  gait: { step: [0.78, 1.32], stance: 0.56, lift: 0.17, footX: 0.14, toeOut: 0.04, knee: 0.22, sway: 0.03, roll: 0.3, dip: 0.035, bounce: 0.035, squat: 0.14,
+    twist: 0.1, lean: [0.3, 0.34, 0.62], breath: 0.22, breathAmp: 0.01, armSwing: 0.1, armOut: 0.1, elbow: 0.16, curl: 0.22,
+    huntArms: 0.95, huntArmIn: -0.04, huntElbow: 0.3, huntClav: 0.1, huntNeck: 0.5, huntJaw: 0.45, jaw: 0.04, gruntJaw: 0.95,
+    neckDown: -0.22, headDown: 0.12, headTilt: 0.22, headRate: 7, turnStep: 0.6, runFrom: 1.7, runTo: 4.0, stepPower: 2.4, unhinge: 0.14, twitch: 0.65 },
+  skinMat: { rough: 0.5, coat: 0.45, coatRough: 0.34, sss: 0x5a3a46, poreF: 210 },
+  skinGLSL: `
+    // waxy and grey, faintly blotched, the veins showing through everywhere
+    float mt = cF(vRest * 3.0);
+    diffuseColor.rgb *= 0.86 + 0.24 * mt;
+    float bFw = length(fwidth(vRest));
+    float vn = cRidge(vRest * vec3(5.0, 8.0, 5.0) + vec3(1.0, 4.0, 2.0), 0.05) * smoothstep(0.4, 0.62, cN(vRest * 1.7 + 4.0)) * (1.0 - smoothstep(0.02, 0.06, bFw * 8.0));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.24, 0.33), vn * 0.55);
+    bH += vn * 0.25;
+    // the hands and feet gone grey-blue; the joints darker
+    float ext = (1.0 - smoothstep(1.0, 1.3, vRest.y)) * smoothstep(0.33, 0.43, abs(vRest.x)) + (1.0 - smoothstep(0.05, 0.25, vRest.y));
+    diffuseColor.rgb *= mix(vec3(1.0), vec3(0.7, 0.72, 0.8), clamp(ext, 0.0, 1.0));
+    // soot and filth ground in from the floor up, and on the palms
+    float dirt = (1.0 - smoothstep(0.0, 0.55, vRest.y)) * (0.5 + 0.5 * cN(vRest * 9.0));
+    diffuseColor.rgb *= mix(vec3(1.0), vec3(0.42, 0.38, 0.34), dirt);
+    bRough = mix(bRough, 0.85, dirt);
+    // the skin over the bones stretched thin and shining
+    bWet = max(bWet, smoothstep(0.55, 0.8, cN(vRest * 6.0)) * 0.25 * step(1.8, vRest.y) * step(vRest.y, 2.25));
+    // the mouth and chin black with old blood; the hands and the front of it with fresh, after
+    float gm = 1.0 - smoothstep(0.02, 0.1, length((vRest - vec3(0.0, 2.6, 0.13)) * vec3(1.0, 0.7, 1.4)));
+    float gc = (1.0 - smoothstep(0.012, 0.03, abs(vRest.x + 0.02 * sin(vRest.y * 25.0)))) * step(2.0, vRest.y) * step(vRest.y, 2.58) * step(0.06, vRest.z) * smoothstep(0.35, 0.6, cN(vec3(vRest.x * 30.0, vRest.y * 4.0, 1.0)));
+    float gh = (1.0 - smoothstep(0.95, 1.2, vRest.y)) * smoothstep(0.38, 0.42, abs(vRest.x));
+    float gore = clamp(gm * (0.45 + uGore) + (gc + gh * 0.8) * uGore, 0.0, 1.0) * (0.55 + 0.45 * cN(vRest * 30.0));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.1, 0.01, 0.01), gore * 0.92);
+    bWet = max(bWet, gore * 0.9);`,
+  extras: paleExtras,
+};
+
+// ---------- what isn't skin: the eyes, the teeth, the claws, and the tags it still wears ----------
+function paleExtras(B) {
+  const lidM = plainMat(0x5a5856, { roughness: 0.5 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x030304, roughness: 0.04, metalness: 0.3 });
+  for (const s of [-1, 1]) beastEye(B, 'head', s * 0.037, 2.733, 0.108, 0.0125, s, { mat: black, lidMat: lidM, lidOpen: -0.35, wrong: s > 0 ? -0.06 : 0 });
+  const throat = new THREE.Mesh(sphereGeo(1, 14, 10), plainMat(0x140304, { roughness: 0.4 })); throat.scale.set(0.05, 0.036, 0.05);
+  beastAttach(B, 'head', throat, 0, 2.625, 0.075);
+  const tongue = new THREE.Mesh(sphereGeo(1, 16, 10), plainMat(0x4a2026, { roughness: 0.25 })); tongue.scale.set(0.03, 0.009, 0.055);
+  beastAttach(B, 'jaw', tongue, 0, 2.61, 0.085);
+  // two rows of needles, far too many of them
+  const gumMat = plainMat(0x2a1214, { roughness: 0.35 }), toothMat = plainMat(0xa89a7a, { roughness: 0.3 });
+  beastTeeth(B, 'head', 2.639, -1, 0.108, 0.048, { n: 20, seed: 31, len: 0.021, w: 0.0062, gumH: 0.03, gumMat, toothMat });
+  beastTeeth(B, 'jaw', 2.627, 1, 0.103, 0.044, { n: 19, seed: 37, len: 0.019, w: 0.0058, gumH: 0.03, fang: [3, 15], gumMat, toothMat });
+  // black claws, long, on every finger and toe
+  const claw = plainMat(0x0c0a0a, { roughness: 0.25 });
+  const clawGeo = cachedGeo('paleClaw', () => { const g = new THREE.ConeGeometry(0.006, 0.05, 6); g.translate(0, -0.025, 0); return g; });
+  for (const s of [1, -1]) {
+    const S = s > 0 ? 'L' : 'R';
+    for (const [o, l1, l2, k] of PALE_FINGERS) {
+      const c = new THREE.Mesh(clawGeo, claw); c.scale.set(k, k, k * 0.7); c.rotation.x = 0.25;
+      beastAttach(B, 'tip' + S, c, s * 0.466, 1.055 - l1 - l2 + 0.008, o + 0.004);
+    }
+    const tc = new THREE.Mesh(clawGeo, claw); tc.scale.set(0.8, 0.7, 0.6); tc.rotation.x = 0.9;
+    beastAttach(B, 'thumb' + S, tc, s * 0.445, 0.988, 0.094);
+    for (const [x, z] of PALE_TOES) { const c = new THREE.Mesh(clawGeo, claw); c.scale.set(0.8, 0.45, 0.6); c.rotation.x = Math.PI / 2 + 0.3; beastAttach(B, 'toe' + S, c, s * (x + (x - 0.13) * 0.2), 0.016, z + 0.008); }
+  }
+  // its tags, on their chain: A-1 GARRISON. And what is left of a belt.
+  const steel = plainMat(0x9a9c98, { roughness: 0.3, metalness: 0.9 });
+  const chain = new THREE.Mesh(torusGeo(0.062, 0.0018, 4, 32), steel); chain.rotation.set(Math.PI / 2 + 0.55, 0, 0);
+  beastAttach(B, 'neck', chain, 0, 2.33, 0.0);
+  for (const [x, rz] of [[-0.008, 0.12], [0.01, -0.08]]) {
+    const tag = new THREE.Mesh(cboxGeo(0.026, 0.044, 0.0022, 0.004), steel); tag.rotation.set(-0.15, 0, rz);
+    beastAttach(B, 'chest', tag, x, 2.205, 0.122);
+  }
+  const olive = mat('fabric', { color: 0x3a3a26 });
+  const belt = new THREE.Mesh(torusGeo(1, 0.11, 6, 30), plainMat(0x2a2016, { roughness: 0.6 })); belt.scale.set(0.135, 0.1, 0.098); belt.rotation.x = Math.PI / 2;
+  beastAttach(B, 'hips', belt, 0, 1.43, -0.02);
+  const buckle = new THREE.Mesh(cboxGeo(0.04, 0.032, 0.008, 0.003), plainMat(0x6a6a5a, { roughness: 0.35, metalness: 0.9 })); beastAttach(B, 'hips', buckle, 0, 1.43, 0.078);
+  const rag = new THREE.Mesh(cboxGeo(0.07, 0.34, 0.006, 0.003), olive); rag.rotation.set(0.05, 0.3, 0.06); beastAttach(B, 'thighL', rag, 0.16, 1.18, 0.05);
+  const rag2 = new THREE.Mesh(cboxGeo(0.05, 0.2, 0.006, 0.003), olive); rag2.rotation.set(-0.05, -0.4, -0.1); beastAttach(B, 'hips', rag2, -0.12, 1.3, -0.06);
+}
+
+// ---------- the one in the level ----------
+const Pale = makeBeast(PALE_DEF);
+function buildPale(scene) { return buildBeast(Pale, scene); }
+function paleBuildStep(budgetMs, scene) { return beastBuildStep(Pale, budgetMs, scene); }
+function palePose(dt, t) { bipedPose(Pale, dt, t); if (Pale.mats.length) for (const m of Pale.mats) m.userData.U.uGore.value = Pale.gore; }
+function paleClick() { Pale.gruntT = 0.5; }
+function setPaleVisible(v) { setBeastVisible(Pale, v); }
+
+// ================= the host's Pale =================
+// It prowls at a long, light walk, and when something moves in front of it, it goes for it at a run you can
+// only beat flat out. It turns fast. It loses you the moment you stop: then it goes to where you were, and
+// looks. If it finds you there - right there, close enough to touch - it leans in, and waits for you to move.
+const PALE_WALK = 1.55, PALE_HUNT = 4.3, PALE_GRAB = 1.5;
+function paleNewRound(g) {
+  const L = Game.L, first = L.chudSpots.findIndex((s) => !!s), sp = L.chudSpots[first] || { x: 0, z: 0 };
+  g.pa = { x: r2(sp.x), z: r2(sp.z), y: 0, s: 0, m: first >= 0 ? 'idle' : 'hidden', a: first, lx: 0, lz: 0, sn: 0 };
+  Game.ps = { state: 'idle', timer: 4, path: null, pi: 0, sus: {}, target: null, last: null, area: first, relocate: -1, stuck: 0, sniff: null };
+}
+// where it can go: anywhere a person can stand except the shelters, through any door that is open
+function paleCellOk(L, k, open) { return !!L.cwalk[k] && (L.lockAt[k] < 0 || !!open[L.lockAt[k]]); }
+const paleOk = (L, x, z, open) => { const gx = Math.floor(x), gz = Math.floor(z); return inGrid(L, gx, gz) && paleCellOk(L, gz * L.W + gx, open); };
+// Can it see this player move? Nothing else registers: not light, not sound. Running is seen from right across
+// a hall, walking from most of the way, creeping only up close. Working at something counts as moving.
+function paleSees(g, p, L, open) {
+  const pa = g.pa, dx = p.x - pa.x, dz = p.z - pa.z, d = Math.hypot(dx, dz);
+  const mv = (p.mv || 0) + (p.h ? 0.9 : 0);
+  if (mv < 0.25 || d > 30) return 0;
+  const fx = Math.sin(pa.y), fz = Math.cos(pa.y);
+  if (d > 0.9 && (dx * fx + dz * fz) / Math.max(d, 1e-3) < Math.cos(1.2)) return 0;
+  if (!lineOfSight(L, pa.x, pa.z, p.x, p.z, open)) return 0;
+  const m = clamp(mv / WALK_SPEED, 0, 2.1), reach = 6 + 11 * m;
+  if (d > reach) return 0;
+  return (0.8 + m * 1.4) * clamp(1.3 - d / reach, 0.2, 1);
+}
+function paleTick(g, living, players, dt, open) {
+  const L = Game.L, ps = Game.ps, pa = g.pa;
+  if (!ps || !pa) return;
+  // a new area for the team: it is there ahead of them, somewhere, while nobody is looking at it
+  if (g.ca > ps.area && L.chudSpots[g.ca] && ps.state !== 'grab') {
+    if (ps.relocate < 0) ps.relocate = 8 + Math.random() * 8;
+    ps.relocate -= dt;
+    const watched = living.some((p) => { const dx = p.x - pa.x, dz = p.z - pa.z; return Math.hypot(dx, dz) < 24 && lineOfSight(L, p.x, p.z, pa.x, pa.z, open); });
+    if (ps.relocate <= 0 && !watched) {
+      const sp = L.chudSpots[g.ca];
+      pa.x = r2(sp.x); pa.z = r2(sp.z); pa.a = g.ca; ps.area = g.ca; ps.state = 'idle'; ps.timer = 3; ps.path = null; ps.sus = {}; ps.target = null; ps.relocate = -1; ps.sniff = null;
+      pa.m = 'idle'; pa.s = 0;
+    }
+  }
+  if (pa.m === 'hidden') return;
+  // the hatch cycling: the klaxon and the lamps draw it straight there
+  if (g.lift && g.lift.st === 1 && !ps.drawn && ps.area === L.areas.length - 1) {
+    ps.drawn = true;
+    const dev = L.devices.find((d) => d.type === 'u');
+    if (dev) { ps.state = 'hunt'; ps.last = { x: dev.x, z: dev.z }; ps.path = null; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: '' }); }
+  }
+  // who is it watching move, and how sure is it
+  let best = null, bestS = 0;
+  for (const p of living) {
+    const v = paleSees(g, p, L, open);
+    ps.sus[p.id] = clamp((ps.sus[p.id] || 0) + (v > 0 ? v * dt * 1.6 : -dt * 0.9), 0, 1.5);
+    if (v > 0 && ps.sus[p.id] >= 0.6 && (!best || ps.sus[p.id] > bestS)) { best = p; bestS = ps.sus[p.id]; }
+  }
+  for (const id in ps.sus) if (!living.some((p) => p.id === id)) delete ps.sus[id];
+  if (ps.state === 'grab') { ps.timer -= dt; pa.s = 0; if (ps.timer <= 0) { ps.state = 'search'; ps.timer = 4; } return; }
+  // close enough to touch someone it has just seen move: it takes them
+  for (const p of living) {
+    const d = dist2(p.x, p.z, pa.x, pa.z);
+    if (d < PALE_GRAB && (ps.sus[p.id] || 0) >= 0.5 && !safeAt(L, p.x, p.z)) { paleTake(g, p); return; }
+  }
+  if (best) {
+    if (ps.state !== 'hunt' && ps.state !== 'notice') { ps.state = 'notice'; ps.timer = 0.38; ps.sniff = null; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: best.id }); }
+    ps.target = best.id; ps.last = { x: best.x, z: best.z };
+  }
+  // someone standing dead still right in its way: it stops, and leans in, and looks
+  if (!best && ps.state !== 'sniff' && ps.state !== 'notice') {
+    const close = living.find((p) => dist2(p.x, p.z, pa.x, pa.z) < 1.7 && !safeAt(L, p.x, p.z));
+    if (close) { ps.state = 'sniff'; ps.timer = 2.4 + Math.random() * 1.6; ps.sniff = close.id; ps.path = null; }
+  }
+  let goal = null, speed = 0;
+  if (ps.state === 'notice') {
+    // its head snaps round to it; a shriek; then it comes
+    ps.timer -= dt;
+    if (ps.last) pa.y = dampAngle(pa.y, Math.atan2(ps.last.x - pa.x, ps.last.z - pa.z), 9, dt);
+    if (ps.timer <= 0) { ps.state = 'hunt'; ps.path = null; }
+  } else if (ps.state === 'hunt') {
+    goal = ps.last; speed = PALE_HUNT;
+    // it has lost whoever it was after: it slows as it comes to where they were
+    if (!best && ps.last) {
+      const d = dist2(pa.x, pa.z, ps.last.x, ps.last.z);
+      speed = d < 5 ? PALE_WALK * 1.4 : PALE_HUNT * 0.8;
+      if (d < 1.9) { ps.state = 'search'; ps.timer = 5 + Math.random() * 3; ps.path = null; ps.goal = null; }
+    }
+  } else if (ps.state === 'sniff') {
+    // leaning in, its face a hand's width from yours: if you move now, it has you
+    ps.timer -= dt;
+    const p = living.find((q) => q.id === ps.sniff);
+    if (!p || dist2(p.x, p.z, pa.x, pa.z) > 2.6) { ps.state = 'idle'; ps.timer = 1; ps.sniff = null; }
+    else {
+      pa.y = dampAngle(pa.y, Math.atan2(p.x - pa.x, p.z - pa.z), 4, dt);
+      if ((p.mv || 0) > 0.35 || p.h) { ps.sus[p.id] = 1.2; paleTake(g, p); return; }
+      if (ps.timer <= 0) { ps.state = 'wander'; ps.goal = paleWanderPoint(g, living, ps.area, p); ps.path = null; ps.sniff = null; }
+    }
+  } else if (ps.state === 'search') {
+    // it prowls round where it lost you, a step at a time, turning its head
+    ps.timer -= dt;
+    if (!ps.goal || dist2(pa.x, pa.z, ps.goal.x, ps.goal.z) < 0.6) {
+      ps.pause = (ps.pause || 0) - dt;
+      if (ps.pause <= 0 && ps.last) {
+        for (let k = 0; k < 12; k++) {
+          const a = Math.random() * Math.PI * 2, r = 1.8 + Math.random() * 2.6, x = ps.last.x + Math.sin(a) * r, z = ps.last.z + Math.cos(a) * r;
+          if (paleOk(L, x, z, open) && !living.some((p) => dist2(p.x, p.z, x, z) < 1.4)) { ps.goal = { x, z }; break; }
+        }
+        ps.pause = 0.8 + Math.random() * 1.2;
+      }
+    } else { goal = ps.goal; speed = PALE_WALK * 0.8; }
+    pa.y += Math.sin(g.t * 1.3) * dt * 1.2;
+    if (ps.timer <= 0) { ps.state = 'idle'; ps.timer = 2; ps.target = null; ps.goal = null; }
+  } else if (ps.state === 'idle') {
+    ps.timer -= dt;
+    if (ps.timer <= 0) { ps.state = 'wander'; ps.goal = paleWanderPoint(g, living, ps.area); ps.path = null; }
+  } else if (ps.state === 'wander') {
+    goal = ps.goal; speed = PALE_WALK;
+    if (!goal || dist2(pa.x, pa.z, goal.x, goal.z) < 0.9) { ps.state = 'idle'; ps.timer = 1.5 + Math.random() * 3.5; }
+  }
+  pa.s = 0;
+  if (goal && speed > 0) paleMove(g, ps, goal, speed, dt, open);
+  pa.m = ps.state === 'hunt' || ps.state === 'notice' ? 'hunt' : ps.state === 'sniff' ? 'sniff' : ps.state === 'search' ? 'search' : pa.s > 0.05 ? 'walk' : 'idle';
+  const tgt = ps.state === 'sniff' ? living.find((p) => p.id === ps.sniff) : ps.target && living.find((p) => p.id === ps.target);
+  if (tgt && (ps.state === 'hunt' || ps.state === 'notice' || ps.state === 'sniff')) { pa.lx = r2(tgt.x); pa.lz = r2(tgt.z); } else { pa.lx = 0; pa.lz = 0; }
+  pa.sn = ps.state === 'sniff' ? 1 : 0;
+  pa.x = r2(pa.x); pa.z = r2(pa.z); pa.y = r2(wrapAngle(pa.y)); pa.s = r2(pa.s);
+}
+// somewhere in its area to go and stand - often near the team, never right on top of anyone
+function paleWanderPoint(g, living, area, away) {
+  const L = Game.L, A = L.areas[area]; if (!A) return null;
+  const near = living.filter((p) => areaAt(L, p.x, p.z) === area);
+  for (let k = 0; k < 50; k++) {
+    let x, z;
+    if (near.length && Math.random() < 0.55) { const p = near[Math.floor(Math.random() * near.length)]; x = p.x + (Math.random() - 0.5) * 16; z = p.z + (Math.random() - 0.5) * 16; }
+    else { x = A.offX + 1 + Math.random() * (A.w - 2); z = A.offZ + 1 + Math.random() * (A.h - 2); }
+    const gx = Math.floor(x), gz = Math.floor(z);
+    if (!inGrid(L, gx, gz) || !L.cwalk[gz * L.W + gx] || L.area[gz * L.W + gx] !== area || L.lockAt[gz * L.W + gx] >= 0) continue;
+    if (away && dist2(gx + 0.5, gz + 0.5, away.x, away.z) < 5) continue;
+    if (living.some((p) => dist2(p.x, p.z, gx + 0.5, gz + 0.5) < 2)) continue;
+    return { x: gx + 0.5, z: gz + 0.5 };
+  }
+  return null;
+}
+function paleMove(g, ps, goal, speed, dt, open) {
+  const L = Game.L, pa = g.pa, ok = (k) => paleCellOk(L, k, open);
+  ps.repath = (ps.repath || 0) - dt;
+  if (!ps.path || ps.repath <= 0 || !ps.pgoal || dist2(ps.pgoal.x, ps.pgoal.z, goal.x, goal.z) > 1.2) {
+    ps.path = navPath(L, ok, pa.x, pa.z, goal.x, goal.z); ps.pi = 0; ps.pgoal = { x: goal.x, z: goal.z }; ps.repath = 0.9;
+    if (!ps.path) { ps.state = ps.state === 'hunt' ? 'search' : 'idle'; ps.timer = 3; return; }
+  }
+  const wp = ps.path[ps.pi]; if (!wp) return;
+  const dx = wp.x - pa.x, dz = wp.z - pa.z, d = Math.hypot(dx, dz);
+  if (d < 0.3) { ps.pi++; return; }
+  // it turns fast - faster when it is after something - and goes where it is facing
+  const want = Math.atan2(dx, dz);
+  pa.y = dampAngle(pa.y, want, speed > 2.5 ? 8 : 4.5, dt);
+  const face = Math.cos(wrapAngle(want - pa.y)), v = speed * clamp(face, 0.2, 1);
+  const nx = pa.x + Math.sin(pa.y) * v * dt, nz = pa.z + Math.cos(pa.y) * v * dt;
+  if (paleOk(L, nx, nz, open)) { pa.x = nx; pa.z = nz; pa.s = v; ps.stuck = 0; }
+  else { ps.stuck += dt; if (ps.stuck > 1.2) { ps.path = null; ps.stuck = 0; } }
+}
+function paleTake(g, p) {
+  const ps = Game.ps, pa = g.pa;
+  ps.state = 'grab'; ps.timer = PALE_KILL + 1.2; ps.sniff = null;
+  pa.m = 'grab'; pa.s = 0; pa.y = r2(Math.atan2(p.x - pa.x, p.z - pa.z));
+  g.k[p.id] = Math.max(0.01, r2(g.t)); g.kc = (g.kc || 0) + 1;
+  dropItems(g, p);
+  g.kl = { id: p.id, t: r2(g.t), c: 2, x: r2(pa.x), z: r2(pa.z), y: pa.y, vx: r2(p.x), vz: r2(p.z) };
+  hostEvent(g, 'paleGrab', { who: p.id, x: r2(p.x), z: r2(p.z) });
+}
+
+// ================= every machine: drawing it, hearing it =================
+const PS = { x: 0, z: 0, y: 0, init: false, clickT: 2, lastM: '', duck: 0 };
+const _paleOv = {};
+// it has to stoop for doors: three metres of it, and a lintel at two and a bit
+function paleDoorCells(L) {
+  if (L.paleDoors) return L.paleDoors;
+  const s = new Set();
+  for (const d of World.doorways || []) s.add(d.gz * L.W + d.gx);
+  for (const lk of L.locks) for (const c of lk.cells) s.add(c.z * L.W + c.x);
+  L.paleDoors = s;
+  return s;
+}
+function updatePaleClient(dt, t) {
+  const g = Game.g, pa = g && g.pa, L = Game.L;
+  if (!Pale.ready || !pa || pa.m === 'hidden' || g.lv !== 'l3') { setPaleVisible(false); return; }
+  if (!PS.init || dist2(PS.x, PS.z, pa.x, pa.z) > 6) { PS.x = pa.x; PS.z = pa.z; PS.y = pa.y; PS.init = true; Pale.snap = true; }
+  PS.x = damp(PS.x, pa.x, 10, dt); PS.z = damp(PS.z, pa.z, 10, dt); PS.y = dampAngle(PS.y, pa.y, 12, dt);
+  const kl = g.kl, kT = kl && kl.c === 2 && Game.gt !== undefined ? Game.gt - kl.t : -1, killing = kT >= 0 && kT < PALE_KILL;
+  if (killing) { PS.x = kl.x; PS.z = kl.z; PS.y = kl.y; }
+  const cam = R.camera.position;
+  setPaleVisible(dist2(cam.x, cam.z, PS.x, PS.z) < 40);
+  Object.assign(Pale, { x: PS.x, z: PS.z, y: 0, yaw: PS.y, speed: killing ? 0 : pa.s, mode: pa.m === 'sniff' ? 'idle' : pa.m });
+  Pale.look = pa.lx || pa.lz ? { x: pa.lx, y: pa.m === 'sniff' ? 1.55 : 1.5, z: pa.lz } : null;
+  Pale.reach = 0; Pale.grip = undefined;
+  if (killing) { Pale._kl = kl; Pale._kT = kT; paleKillOverrides(kl, kT); }
+  else {
+    Pale._kl = null;
+    // stooping through doorways; leaning right down into your face when it has found you standing there
+    const doors = paleDoorCells(L), fx = Math.sin(PS.y), fz = Math.cos(PS.y);
+    const atDoor = [0, 0.5, 1.0].some((a) => { const gx = Math.floor(PS.x + fx * a), gz = Math.floor(PS.z + fz * a); return inGrid(L, gx, gz) && doors.has(gz * L.W + gx); });
+    PS.duck = damp(PS.duck, atDoor ? 1 : 0, 6, dt);
+    PS.sniff = damp(PS.sniff || 0, pa.sn ? 1 : 0, 3, dt);
+    const ov = _paleOv; for (const k in ov) delete ov[k];
+    ov.drop = PS.duck * 0.55 + PS.sniff * 0.42; ov.lean = PS.duck * 0.35 + PS.sniff * 0.55;
+    ov.neckPitch = -PS.duck * 0.3 - PS.sniff * 0.25;
+    if (PS.sniff > 0.05) { ov.headRoll = Math.sin(t * 0.7) * 0.45 * PS.sniff; ov.jaw = 0.12 + 0.08 * Math.sin(t * 3.1); }
+    Pale.ov = ov;
+  }
+  Pale.gore = Math.max(0, Pale.gore - dt / 150);
+  palePose(dt, t);
+  // its feet: quick, light, wet slaps on concrete - you hear it coming only when it runs
+  for (const ev of Pale.events) {
+    const d = dist2(ev.x, ev.z, cam.x, cam.z);
+    if (d > 30) continue;
+    Sound.play('paleStep', { x: ev.x, y: 0.05, z: ev.z });
+    if (pa.m === 'hunt' && d < 10) R.shake = Math.max(R.shake || 0, 0.12);
+  }
+  Pale.events.length = 0;
+  // the clicking in its throat, all the time, faster when it is after something; a shriek when it sees you
+  if (pa.m !== PS.lastM) { if (pa.m === 'hunt' && !killing) { paleClick(); Sound.play('paleShriek', { x: PS.x, y: 2.6, z: PS.z }); PS.clickT = 0.8; } PS.lastM = pa.m; }
+  PS.clickT -= dt;
+  if (PS.clickT <= 0 && !killing) {
+    PS.clickT = pa.m === 'hunt' ? 0.5 + Math.random() * 0.8 : pa.m === 'sniff' ? 0.9 + Math.random() : 2.5 + Math.random() * 4;
+    if (dist2(cam.x, cam.z, PS.x, PS.z) < 26) { paleClick(); Sound.play('paleClick', { x: PS.x, y: 2.6, z: PS.z }); }
+  }
+}
+// how close and how dangerous, for the heart and the music
+function paleThreat() {
+  const g = Game.g, pa = g && g.pa;
+  if (!pa || pa.m === 'hidden' || !Game.me) return 0;
+  const d = dist2(Game.me.x, Game.me.z, PS.x, PS.z);
+  return clamp(1 - d / (pa.m === 'hunt' ? 18 : pa.m === 'sniff' ? 6 : 10), 0, 1) * (pa.m === 'hunt' || pa.m === 'sniff' ? 1 : 0.55);
+}
+
+// ================= when it catches someone =================
+// It has you by the head, one hand round the whole of it, and lifts you up to its face. It looks at you a long
+// time, its head going over to one side and then the other, a finger tracing your face. The mouth opens - down
+// past where a jaw should stop - and it bites into your neck and shoulder and holds on. Then both hands, and a
+// twist. It lets you drop, and gets down over you. All of it from g.kl, the same on every machine.
+const PALE_KILL = 5.6;
+const PK_T = { snatch: 0.3, lift: 0.95, study: 1.0, open: 2.3, bite: 2.6, hands: 3.0, twist: 3.55, drop: 3.9, land: 4.15, crouch: 4.4 };
+const PK_LUNGE = [[0, 0], [0.22, 0.42], [0.95, 0.12], [2.3, 0.05], [2.6, 0.18], [3.55, 0.12], [3.9, 0.08], [4.4, 0.35], [5.6, 0.2]];
+const PK_LEAN = [[0, 0.1], [0.22, 0.42], [0.95, 0.12], [2.3, -0.05], [2.6, 0.22], [3.55, 0.15], [3.9, 0.3], [4.4, 0.95], [5.2, 0.9], [5.6, 0.6]];
+const PK_DROP = [[0, 0], [0.22, 0.12], [0.95, 0], [3.9, 0], [4.4, 0.62], [5.3, 0.6], [5.6, 0.4]];
+const PK_JAW = [[0, 0.1], [0.12, 0.7], [0.3, 0.25], [1.0, 0.08], [1.8, 0.14], [2.3, 0.65], [2.5, 1.45], [2.6, 0.28], [3.5, 0.32], [3.62, 0.55], [3.9, 0.2], [4.4, 0.45], [4.7, 0.2], [5.0, 0.5], [5.3, 0.2], [5.6, 0.1]];
+// its head over you: [t, pitch, roll] - the long slow tilts while it looks at you
+const PK_HEAD = [[0, 0, 0], [0.3, 0.05, 0], [0.95, 0.0, 0.0], [1.25, -0.05, 0.55], [1.6, 0.02, 0.6], [1.85, -0.04, -0.5], [2.2, 0.0, -0.45], [2.3, -0.22, 0.0], [2.5, -0.3, 0.0], [2.6, 0.25, 0.2], [3.5, 0.2, 0.25], [3.9, 0.35, 0.0], [4.4, 0.75, 0.1], [5.6, 0.5, 0.0]];
+// your head, held in front of its face: [t, how far in front, across, up]
+const PK_VHOLD = [[0.3, 0.6, 0.0, -0.22], [0.95, 0.4, 0.0, -0.1], [2.3, 0.3, 0.0, -0.06], [2.5, 0.34, 0.0, -0.08], [2.6, 0.13, -0.12, -0.13]];
+// where you end up: crumpled on the floor in front of it, head away from it
+const PK_LIE = { hip: [0.08, 0.13, 0.62], head: [-0.15, 0.15, 1.38], feet: [0.38, 0.1, -0.12] };
+const _pk = { a: [], b: [], c: [] };
+const _pkV = new THREE.Vector3(), _pkW = new THREE.Vector3(), _pkM = new THREE.Vector3(), _pkH = new THREE.Vector3(), _pkL = new THREE.Vector3(), _pkP = new THREE.Vector3();
+const _pfF = new THREE.Vector3(), _pfU = new THREE.Vector3(), _pfR = new THREE.Vector3();
+// its face and the way its head points, as it is posed now
+function paleFace(out) {
+  const h = Pale.bones.head; h.updateWorldMatrix(true, false);
+  h.localToWorld(out.set(0, 2.68 - Pale.rest.head.y, 0.14 - Pale.rest.head.z));
+  _pfF.set(0, 0, 1).transformDirection(h.matrixWorld); _pfU.set(0, 1, 0).transformDirection(h.matrixWorld); _pfR.set(1, 0, 0).transformDirection(h.matrixWorld);
+  return out;
+}
+function paleEyes(out) { Pale.bones.head.localToWorld(out.set(0, 2.733 - Pale.rest.head.y, 0.12 - Pale.rest.head.z)); return out; }
+function paleMouth(out) { Pale.bones.head.localToWorld(out.set(0, 2.62 - Pale.rest.head.y, 0.15 - Pale.rest.head.z)); return out; }
+function pkHold(T, out) {
+  trackAt(PK_VHOLD, T, _pk.c);
+  paleFace(out);
+  return out.addScaledVector(_pfF, _pk.c[0]).addScaledVector(_pfR, _pk.c[1]).addScaledVector(_pfU, _pk.c[2]);
+}
+function paleKillOverrides(kl, T) {
+  const ov = _paleOv; for (const k in ov) delete ov[k];
+  ov.lunge = trackAt(PK_LUNGE, T, _pk.a)[0];
+  ov.lean = trackAt(PK_LEAN, T, _pk.a)[0];
+  ov.drop = trackAt(PK_DROP, T, _pk.a)[0];
+  ov.jaw = trackAt(PK_JAW, T, _pk.a)[0];
+  trackAt(PK_HEAD, T, _pk.a); ov.headPitch = _pk.a[0]; ov.headRoll = _pk.a[1];
+  // it worries at the bite; and when it eats, its whole back works
+  if (T > PK_T.bite && T < PK_T.twist) { const k = T - PK_T.bite; ov.chestYaw = Math.sin(k * 17) * 0.12 * Math.exp(-k * 1.5); ov.headRoll += Math.sin(k * 23) * 0.08; }
+  if (T > PK_T.crouch) { ov.chestYaw = Math.sin(T * 6.1) * 0.1; ov.headPitch += Math.sin(T * 8.3) * 0.08; }
+  if (T > PK_T.twist - 0.05 && T < PK_T.twist + 0.15) ov.chestYaw = (ov.chestYaw || 0) + Math.sin(clamp((T - PK_T.twist + 0.05) / 0.2, 0, 1) * Math.PI) * 0.35;
+  ov.still = true;
+  ov.lookFwd = T < PK_T.drop;
+  ov.beforeArms = paleKillHands;
+  // feet: a step in as it grabs, then planted
+  const kr = smooth01(T / 0.22), kf = smooth01((T - 0.18) / 0.22);
+  ov.footR = ckWorld(kl, -0.14, 0.1 + Math.sin(kr * Math.PI) * 0.14, lerp(-0.05, 0.45, kr), _pkL.clone());
+  ov.footL = ckWorld(kl, 0.14, 0.1 + Math.sin(kf * Math.PI) * 0.1, lerp(-0.05, 0.2, kf), _pkP.clone());
+  Pale.ov = ov;
+  return ov;
+}
+const PKV = { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), face: new THREE.Vector3(0, 1, 0), axis: new THREE.Vector3(0, 1, 0), live: 1, phase: 2, t: -1, T: -1, held: false };
+function paleKillVictim(kl, T) {
+  const V = PKV, fx = Math.sin(kl.y), fz = Math.cos(kl.y), rt = { x: fz, z: -fx };
+  V.t = kl.t; V.T = T;
+  const kick = Math.sin(T * 10.3) * 0.1;
+  V.live = T < PK_T.bite ? 1 : T < PK_T.twist ? 0.5 : 0; V.held = T < PK_T.drop;
+  if (T < PK_T.snatch) {
+    // yanked off your feet by the head
+    const k = smooth01(T / PK_T.snatch), v = ckLocal(kl, kl.vx === undefined ? kl.x + fx * 1.2 : kl.vx, kl.vz === undefined ? kl.z + fz * 1.2 : kl.vz);
+    pkHold(PK_T.snatch, _pkW); ckWorld(kl, v.x, 1.6, v.z, _pkV);
+    V.head.set(lerp(_pkV.x, _pkW.x, k), lerp(_pkV.y, _pkW.y, k * k), lerp(_pkV.z, _pkW.z, k));
+    V.hip.set(V.head.x, V.head.y - 0.66, V.head.z); V.feet.set(V.head.x + fx * 0.2 * k, Math.max(0.05, V.head.y - 1.55), V.head.z + fz * 0.2 * k);
+    V.face.set(-fx, 0, -fz); V.phase = 2;
+  } else if (T < PK_T.bite - 0.04) {
+    // held up to its face by the head, legs kicking
+    pkHold(T, V.head);
+    V.hip.set(V.head.x + Math.sin(T * 2.3) * 0.06, V.head.y - 0.66, V.head.z + fz * 0.04);
+    V.feet.set(V.hip.x + kick * fz, V.hip.y - 0.88, V.hip.z - kick * fx);
+    V.face.set(-fx, 0, -fz); V.phase = 2;
+  } else if (T < PK_T.drop) {
+    // its teeth in your neck: you hang against it, and at the twist your head goes round
+    const k = smooth01((T - (PK_T.bite - 0.04)) / 0.08);
+    pkHold(PK_T.bite, V.head);
+    V.hip.set(V.head.x + rt.x * 0.08 + fx * 0.02, V.head.y - 0.66, V.head.z + rt.z * 0.08 + fz * 0.02);
+    const sw = T > PK_T.twist ? 0 : Math.sin(T * 7.1) * 0.05 * (1 - k * 0.5);
+    V.feet.set(V.hip.x + sw * fz, V.hip.y - 0.88, V.hip.z - sw * fx);
+    const tw = smooth01((T - PK_T.twist) / 0.1);
+    V.face.set(-fx * Math.cos(tw * 2.4) + rt.x * Math.sin(tw * 2.4), 0, -fz * Math.cos(tw * 2.4) + rt.z * Math.sin(tw * 2.4)); V.phase = 2;
+  } else if (T < PK_T.land) {
+    // let go of
+    const k = smooth01((T - PK_T.drop) / (PK_T.land - PK_T.drop));
+    pkHold(PK_T.bite, _pkV);
+    const lh = ckWorld(kl, ...PK_LIE.head, _pkW);
+    V.head.set(lerp(_pkV.x, lh.x, k), lerp(_pkV.y, lh.y, k * k), lerp(_pkV.z, lh.z, k));
+    const lhip = ckWorld(kl, ...PK_LIE.hip, _pkM), lfeet = ckWorld(kl, ...PK_LIE.feet, _pkH);
+    V.hip.lerpVectors(_pkP.set(V.head.x, V.head.y - 0.66, V.head.z), lhip, k);
+    V.feet.lerpVectors(_pkP.set(V.head.x, Math.max(0.05, V.head.y - 1.5), V.head.z), lfeet, k);
+    V.face.set(rt.x, 0.3, rt.z).normalize(); V.phase = 4;
+  } else {
+    // on the floor, and it is over you
+    ckWorld(kl, ...PK_LIE.head, V.head); ckWorld(kl, ...PK_LIE.hip, V.hip); ckWorld(kl, ...PK_LIE.feet, V.feet);
+    const b = T < PK_T.land + 0.25 ? Math.sin((T - PK_T.land) / 0.25 * Math.PI) * 0.06 : 0;
+    V.hip.y += b; V.head.y += b * 0.6;
+    if (T > PK_T.crouch) { const j = Math.max(0, Math.sin(T * 6.1)) * 0.03; V.hip.y += j; }
+    V.face.set(rt.x, 0.6, rt.z).normalize(); V.phase = 4;
+  }
+  V.axis.set(-fx, 0, -fz);
+  return V;
+}
+function paleKillHands(B) {
+  const kl = B._kl, T = B._kT; if (!kl) return;
+  const V = paleKillVictim(kl, T), ov = B.ov, fx = Math.sin(kl.y), fz = Math.cos(kl.y);
+  // the right hand round your head the whole time it holds you
+  if (T < PK_T.drop) {
+    ov.armR = _pkH.copy(V.head).add(_pkL.set(0, 0.06, 0)).clone();
+    ov.gripR = T < PK_T.snatch ? clamp(T / PK_T.snatch * 1.6 - 0.2, 0, 1) : 0.95;
+  }
+  // the left: up to your face, one finger along it; then on your chin for the twist
+  if (T > 0.9 && T < PK_T.bite) {
+    const k = smooth01((T - 0.9) / 0.5), tr = Math.sin(T * 1.7) * 0.05;
+    ov.armL = new THREE.Vector3().lerpVectors(ckWorld(kl, 0.3, 1.25, 0.25, _pkP), _pkM.copy(V.head).add(_pkL.set(-fx * 0.1 + fz * tr, -0.05, -fz * 0.1 - fx * tr)), k);
+    ov.gripL = 0.3;
+  } else if (T >= PK_T.hands && T < PK_T.drop) {
+    const k = smooth01((T - PK_T.hands) / 0.3);
+    ov.armL = new THREE.Vector3().lerpVectors(ckWorld(kl, 0.3, 1.4, 0.3, _pkP), _pkM.copy(V.head).add(_pkL.set(-fx * 0.08, -0.1, -fz * 0.08)), k);
+    ov.gripL = 0.6 + k * 0.35;
+  } else if (T >= PK_T.crouch) {
+    // both hands down on you while it feeds
+    ov.armL = _pkM.copy(V.hip).add(_pkL.set(fz * 0.12, 0.05, -fx * 0.12)).clone();
+    ov.armR = _pkH.copy(V.hip).lerp(V.head, 0.5).add(_pkL.set(-fz * 0.1, 0.05, fx * 0.1)).clone();
+    ov.gripL = ov.gripR = 0.7 + 0.2 * Math.sin(T * 6);
+  }
+  if (T > PK_T.drop) ov.look = V.hip;
+}
+function paleKillBody(kl, T) {
+  if (PKV.t !== kl.t || Math.abs(PKV.T - T) > 0.2) paleKillVictim(kl, T);
+  return PKV;
+}
+function paleDropPose(kl, out) {
+  ckWorld(kl, ...PK_LIE.head, out.head); ckWorld(kl, ...PK_LIE.hip, out.hip); ckWorld(kl, ...PK_LIE.feet, out.feet);
+  const fx = Math.sin(kl.y), fz = Math.cos(kl.y);
+  out.face.set(fz, 0.6, -fx).normalize(); out.axis.set(-fx, 0, -fz);
+  return out;
+}
+const PALE_KILL_SOUNDS = [
+  [0.02, (p) => Sound.play('paleShriek', p)], [0.28, (p) => Sound.play('thud', p)],
+  [0.7, (p) => Sound.play('paleClick', p)], [1.3, (p) => Sound.play('paleClick', p)], [1.9, (p) => Sound.play('paleClick', p)],
+  [2.25, (p, me) => { Sound.play('jawOpen', p); if (me) R.fearKick = 1; }],
+  [PK_T.bite, (p, me) => { Sound.play('bite', p); Sound.play('squelch', p); if (me) { R.hit = 2; R.bleed = 1; } Pale.gore = Math.min(1, Pale.gore + 0.6); }],
+  [2.9, (p) => Sound.play('gurgle', p)], [3.2, (p) => Sound.play('squelch', p)],
+  [PK_T.twist, (p, me) => { Sound.play('neckSnap', p); if (me) { R.hit = 2.4; R.whiteFlash = 0.25; } }],
+  [PK_T.land, (p, me, d, lie) => { Sound.play('thud', lie); if (me) { R.shake = 1.4; } }],
+  [4.6, (p, me, d, lie) => { Sound.play('squelch', lie); chudBloodPool(lie, 0.9); }], [5.0, (p, me, d, lie) => Sound.play('squelch', lie)], [5.35, (p) => Sound.play('paleClick', p)],
+];
+function updatePaleKill(dt) {
+  const g = Game.g, kl = g && g.kl;
+  if (!kl || kl.c !== 2 || Game.gt === undefined) return;
+  const T = Game.gt - kl.t;
+  if (Game.pkId !== kl.t) { Game.pkId = kl.t; Game.pkLast = -1; }
+  if (T < 0) return;
+  const mine = kl.id === netMyId(), pos = { x: kl.x, y: 2.5, z: kl.z };
+  const d = Game.me ? dist2(Game.me.x, Game.me.z, kl.x, kl.z) : 99;
+  const lie = ckWorld(kl, ...PK_LIE.hip, new THREE.Vector3()); lie.y = 0.2;
+  for (const [at, fn] of PALE_KILL_SOUNDS) if (Game.pkLast < at && T >= at && T < at + 1) fn(pos, mine, d, lie);
+  Game.pkLast = T;
+  if (T > PALE_KILL && g.k[kl.id] && !Game.corpses.has(kl.id)) {
+    const out = paleDropPose(kl, { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), face: new THREE.Vector3(), axis: new THREE.Vector3() });
+    Game.corpses.set(kl.id, Object.assign(out, { live: 0, phase: 4, t: kl.t }));
+  }
+}
+// What the one it has sees: its face, close; its head going over to one side; the mouth opening on you; the
+// room past its cheek; the twist, and the floor.
+const _pc = { look: new THREE.Vector3(), eyes: new THREE.Vector3() };
+function paleKillCam(T, dt, t) {
+  const cam = R.camera, kl = Game.g.kl, V = paleKillBody(kl, T);
+  const fx = Math.sin(kl.y), fz = Math.cos(kl.y);
+  paleEyes(_pc.eyes); paleMouth(_pkM);
+  let fov = 66, roll = 0, jit = 0.02;
+  if (T < PK_T.snatch) {
+    const k = smooth01(T / PK_T.snatch), sc = Game.scare;
+    cam.position.lerpVectors(sc ? sc.from : V.head, V.head, k);
+    cam.lookAt(_pc.look.lerpVectors(_pkP.copy(V.head).add(_pkL.set(fx, 0, fz).multiplyScalar(-2)), _pc.eyes, Math.min(1, k * 2.4)));
+    fov = lerp(72, 86, k); roll = Math.sin(T * 34) * 0.1; jit = 0.07;
+  } else if (T < PK_T.bite - 0.04) {
+    // held up in front of it while it looks at you, its head going over one way, then the other
+    cam.position.copy(V.head);
+    const k = smooth01((T - 2.0) / 0.45);
+    cam.lookAt(_pc.look.lerpVectors(_pc.eyes, _pkM, k));
+    fov = lerp(80, 50, smooth01((T - PK_T.snatch) / 1.9)); roll = -(Pale.ov && Pale.ov.headRoll || 0) * 0.35 + Math.sin(T * 1.9) * 0.04;
+    jit = 0.01 + k * 0.012;
+    R.fade = Math.max(0, k * 0.2);
+  } else if (T < PK_T.twist) {
+    // past its cheek, at the room, while it holds on
+    cam.position.copy(V.head);
+    cam.lookAt(_pc.look.set(V.head.x - fx * 3 + fz * 1.2, V.head.y - 0.6, V.head.z - fz * 3 - fx * 1.2));
+    roll = 0.5 + Math.sin(T * 13) * 0.05; fov = 84; jit = 0.05;
+    R.fade = 0.35 + 0.25 * Math.abs(Math.sin(T * 7.3));
+    R.bleed = Math.max(R.bleed || 0, 0.8);
+  } else if (T < PK_T.land) {
+    // the twist: the room goes round, all the way
+    cam.position.copy(V.head);
+    const k = smooth01((T - PK_T.twist) / 0.12);
+    cam.lookAt(_pc.look.set(V.head.x - fx * 3 + fz * 1.2, V.head.y - 0.6, V.head.z - fz * 3 - fx * 1.2));
+    roll = 0.5 + k * 2.5; fov = 90; jit = 0.03;
+    R.fade = damp(R.fade, 0.65, 6, dt);
+  } else {
+    // on the floor, on your side, and it is down over you
+    cam.position.copy(V.head); cam.position.y = 0.16;
+    cam.lookAt(_pc.look.copy(_pc.eyes).lerp(V.hip, 0.3));
+    roll = Math.PI * 0.5; fov = 70; jit = 0.008;
+    R.fade = damp(R.fade, T > 5.0 ? 1 : 0.55, T > 5.0 ? 3 : 1.5, dt);
+  }
+  cam.rotateZ(roll);
+  cam.position.x += (Math.random() - 0.5) * jit; cam.position.y += (Math.random() - 0.5) * jit; cam.position.z += (Math.random() - 0.5) * jit;
+  if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  R.fear = 1;
+  setFlash(T < PK_T.snatch ? 0.7 : T < PK_T.bite ? (Math.random() < 0.12 ? 0.15 : 0.42) : T < PK_T.twist ? 0.25 : T < PK_T.land ? (Math.random() < 0.5 ? 0.05 : 0.3) : 0.1);
+  R.flashThrow = 1.2; R.bounce.intensity = 0;
+  if (World.viewModel) World.viewModel.group.visible = false;
+}
 // ================= net: Claude's live room inside Claude, peer-to-peer everywhere else =================
 const IN_CLAUDE = !!(window.claude && typeof window.claude.use === 'function');
 // PeerJS, from whichever of these this network lets through
@@ -12798,6 +13558,768 @@ function inviteLinkFor(code) {
   if (/itch\.zone$|hwcdn\.net$/.test(location.hostname)) return '';
   return location.protocol.startsWith('http') ? base + '#' + code : '';
 }
+// ================= Breach - A1: the bunker under the surface =================
+// Above B5, above everything the facility ever was, there is one more floor: a civil defence bunker, sealed
+// from the inside the day it was finished. Painted concrete, blast doors, a decontamination line, the barracks
+// where the garrison slept, the operations room where they watched the maps - and at the top of it all the
+// hatch, and whatever is on the other side of it. The emergency batteries are still going: there is light.
+// It doesn't help. The Pale doesn't see light. It sees you move.
+//
+// Legend additions for these maps (on top of the first floor's and B5's):
+//   z under the hatch: the platform that goes up      u the hatch control
+
+// ---------- materials and looks ----------
+Object.assign(MAT_DEFS, {
+  paintBunker: { tex: 'paint', ns: 0.8, color: 0x56665a },
+  paintCream: { tex: 'paint', ns: 0.8, color: 0xa8a28a },
+  tileDecon: { tex: 'tile', ns: 0.9, color: 0xb8c4bc, tile: 3 },
+  floorDecon: { tex: 'tilefloor', ns: 0.8, color: 0x8a948c, tile: 4 },
+  floorLino: { tex: 'tilefloor', ns: 0.8, color: 0x6a5c4a, tile: 4 },
+  panelOak: { tex: 'wood', ns: 0.9, color: 0x4a3626 },
+  carpetBlue: { tex: 'carpet', ns: 0.8, color: 0x2e3844, tile: 4 },
+  olive: { tex: 'paint', ns: 0.8, color: 0x4a5034 },
+});
+Object.assign(THEMES, {
+  bunker: { lo: 'paintBunker', hi: 'paintCream', floor: 'floor', ceil: 'concreteDark', ceilType: 'slab', pipes: true, fog: [0x010201, 0.045], amb: [0x1a201c, 0x040505, 0.16], L: 0xe8f0e4, star: 0xffc080, bang: 0xff2a1a, power: { L: [0.4, 0.35], '*': [0.5, 0.25], '!': [1, 0] }, haze: 0.5 },
+  decon: { lo: 'tileDecon', hi: 'tileDecon', floor: 'floorDecon', ceil: 'panel', ceilType: 'grid', fog: [0x010202, 0.045], amb: [0x1c2422, 0x040505, 0.18], L: 0xe0f4ec, star: 0xffc890, bang: 0xff2a1a, power: { L: [0.45, 0.35], '*': [0.4, 0.3], '!': [1, 0] }, haze: 0.4 },
+  barracks: { lo: 'paintBunker', hi: 'paintCream', floor: 'floorLino', ceil: 'concreteDark', ceilType: 'slab', pipes: true, fog: [0x010201, 0.045], amb: [0x1e1e18, 0x050404, 0.15], L: 0xf0eadc, star: 0xffb870, bang: 0xff2a1a, power: { L: [0.35, 0.35], '*': [0.5, 0.25], '!': [1, 0] }, haze: 0.5 },
+  command: { lo: 'panelOak', hi: 'paintCream', floor: 'carpetBlue', ceil: 'panel', ceilType: 'grid', rail: true, fog: [0x010102, 0.04], amb: [0x1a1e26, 0x040506, 0.16], L: 0xe4ecff, star: 0xffc080, bang: 0xff2a1a, power: { L: [0.4, 0.35], '*': [0.5, 0.3], '!': [1, 0] }, haze: 0.4 },
+  silo: { lo: 'concreteDark', hi: 'concrete', floor: 'floor', ceil: 'concreteDark', ceilType: 'deck', beams: true, pipes: true, fog: [0x020203, 0.032], amb: [0x1c1e22, 0x040405, 0.15], L: 0xe8ecf0, star: 0xffb870, bang: 0xff2010, power: { L: [0.35, 0.4], '*': [0.4, 0.3], '!': [1, 0] }, haze: 0.85,
+    liftWall: 'concrete', liftFloor: 'plate', liftCeil: 'plateDark' },
+});
+Object.assign(THEME_SOIL, { bunker: [0.06, 0.8], decon: [0.3, 0.5], barracks: [0.04, 0.75], command: [0.02, 0.55], silo: [0.12, 0.9] });
+const BUNKER = new Set(['bunker', 'decon', 'barracks', 'command', 'silo']);
+const BM = {
+  get olive() { return mat('olive'); },
+  get drab() { return mat('fabric', { color: 0x4a4c34 }); },
+  get blanket() { return mat('fabric', { color: 0x5a5a48 }); },
+  get steel() { return mat('metal', { color: 0x7a7e78 }); },
+  get gunmetal() { return plainMat(0x3a3e3e, { roughness: 0.45, metalness: 0.8 }); },
+  get sandbag() { return mat('fabric', { color: 0x8a7a5a }); },
+  get rubber() { return plainMat(0x161616, { roughness: 0.7 }); },
+  get hazmat() { return plainMat(0xc8762a, { roughness: 0.55 }); },
+  get redPaint() { return plainMat(0x8a1a12, { roughness: 0.5 }); },
+};
+
+// ---------- what's on the walls: civil defence, painted by the people who were going to live here ----------
+const BreachArt = {};
+function breachArt(kind, seed = 0) {
+  const key = kind + seed;
+  if (BreachArt[key]) return BreachArt[key];
+  const r = mulberry32(seed * 613 + kind.length * 41);
+  const sizes = { poster: [512, 720], shelter: [512, 512], wallmap: [1024, 640], roster: [512, 680], stencil: [512, 256], decon: [720, 512], graffiti: [1024, 512], clocks: [1024, 256], plot: [1024, 1024] };
+  const [W, H] = sizes[kind] || [512, 512];
+  const tex = canvasTex(W, H, (g, w, h) => {
+    const stencil = (sz, wt = 800) => { g.font = wt + ' ' + sz + 'px "Big Shoulders Stencil Display", Impact, sans-serif'; };
+    const type = (sz, wt = 500) => { g.font = wt + ' ' + sz + 'px "Courier New", monospace'; };
+    const age = (n = 2500, a = 0.09) => { for (let i = 0; i < n; i++) { g.fillStyle = 'rgba(60,44,20,' + r() * a + ')'; g.fillRect(r() * w, r() * h, 1 + r() * 3, 1 + r() * 3); } };
+    const stains = (n = 6) => { for (let i = 0; i < n; i++) { const x = r() * w, gr = g.createLinearGradient(x, 0, x, h); gr.addColorStop(0, 'rgba(70,52,26,0.35)'); gr.addColorStop(1, 'rgba(70,52,26,0)'); g.fillStyle = gr; g.fillRect(x, 0, 6 + r() * 26, h * (0.2 + r() * 0.6)); } };
+    if (kind === 'poster') {
+      // IN THE EVENT OF ATTACK: a family under a table, a list of what to do, all of it wrong now
+      const v = seed % 3;
+      g.fillStyle = ['#d8cfae', '#c8b88a', '#d0c8b0'][v]; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#8a1a12'; g.fillRect(0, 0, w, 120);
+      g.fillStyle = '#f0e8d0'; stencil(56); g.textAlign = 'center';
+      g.fillText(['IN THE EVENT OF ATTACK', 'STAY BELOW', 'DUCK AND COVER'][v], w / 2, 82);
+      g.fillStyle = '#1a1a14';
+      if (v === 0) {
+        g.fillRect(120, 300, 280, 14); g.fillRect(130, 314, 12, 120); g.fillRect(378, 314, 12, 120);
+        for (const [x, s] of [[190, 1], [250, 0.8], [310, 0.6]]) { g.beginPath(); g.arc(x, 400 - 40 * s, 18 * s, 0, 6.28); g.fill(); g.fillRect(x - 22 * s, 400 - 20 * s, 44 * s, 34 * s); }
+      } else if (v === 1) {
+        g.beginPath(); g.moveTo(w / 2, 160); g.lineTo(w / 2 + 150, 300); g.lineTo(w / 2 - 150, 300); g.fill();
+        g.fillRect(w / 2 - 110, 300, 220, 150); g.fillStyle = '#d8cfae'; g.fillRect(w / 2 - 30, 360, 60, 90);
+      } else {
+        g.beginPath(); g.arc(w / 2, 300, 120, 0, 6.28); g.fill(); g.fillStyle = '#c8b88a'; g.beginPath(); g.arc(w / 2, 300, 80, 0, 6.28); g.fill();
+        g.fillStyle = '#1a1a14'; for (let k = 0; k < 3; k++) { const a = k * 2.094 - 1.57; g.beginPath(); g.moveTo(w / 2, 300); g.arc(w / 2, 300, 120, a - 0.5, a + 0.5); g.fill(); }
+      }
+      g.fillStyle = '#1a1a14'; type(24, 700); g.textAlign = 'left';
+      const lines = [['1. GO TO YOUR SHELTER AT ONCE', '2. CLOSE THE DOOR BEHIND YOU', '3. DO NOT OPEN IT FOR ANYONE', '4. WAIT FOR THE ALL CLEAR'], ['THE SURFACE IS NOT SAFE', 'THE HATCH STAYS SHUT', 'RATIONS FOR 2 YEARS', 'KEEP CALM. KEEP BELOW.'], ['AT THE FLASH: DROP', 'COVER YOUR HEAD', 'DO NOT LOOK UP', 'COUNT TO SIXTY']][v];
+      lines.forEach((t, i) => g.fillText(t, 40, 520 + i * 40));
+      g.fillStyle = '#4a3a1a'; type(16); g.fillText('CIVIL DEFENCE CORPS · FORM CD/' + (17 + seed), 40, h - 24);
+      stains(); age();
+    } else if (kind === 'shelter') {
+      g.fillStyle = '#e2b52a'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#141210'; g.beginPath(); g.arc(256, 210, 150, 0, 6.28); g.fill();
+      g.fillStyle = '#e2b52a';
+      for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * 2.094; g.beginPath(); g.moveTo(256, 210); g.lineTo(256 + Math.cos(a - 0.45) * 130, 210 + Math.sin(a - 0.45) * 130); g.lineTo(256 + Math.cos(a + 0.45) * 130, 210 + Math.sin(a + 0.45) * 130); g.fill(); }
+      g.fillStyle = '#141210'; stencil(66); g.textAlign = 'center'; g.fillText('FALLOUT SHELTER', 256, 430);
+      g.font = '700 30px monospace'; g.fillText('CAPACITY 240', 256, 478);
+      age(1500, 0.12);
+    } else if (kind === 'wallmap') {
+      // the city above, gridded, and the rings drawn on it in red
+      g.fillStyle = '#d8d0b4'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(60,90,120,0.6)'; g.lineWidth = 14; g.beginPath(); g.moveTo(0, 420); g.bezierCurveTo(300, 380, 520, 520, 1024, 460); g.stroke();
+      g.strokeStyle = 'rgba(40,40,30,0.5)'; g.lineWidth = 2;
+      for (let i = 0; i < 70; i++) { g.beginPath(); const x = r() * w, y = r() * h; g.moveTo(x, y); g.lineTo(x + (r() - 0.5) * 300, y + (r() - 0.5) * 300); g.stroke(); }
+      g.fillStyle = 'rgba(40,40,30,0.35)'; for (let i = 0; i < 260; i++) g.fillRect(380 + (r() - 0.5) * 520, 300 + (r() - 0.5) * 380, 6 + r() * 14, 6 + r() * 14);
+      g.strokeStyle = 'rgba(30,30,20,0.35)'; g.lineWidth = 1; for (let x = 0; x < w; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); } for (let y = 0; y < h; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+      g.strokeStyle = '#a81a12'; for (const [rad, wd] of [[60, 5], [140, 4], [230, 3], [330, 2]]) { g.lineWidth = wd; g.setLineDash(rad > 200 ? [16, 10] : []); g.beginPath(); g.arc(410, 300, rad, 0, 6.28); g.stroke(); }
+      g.setLineDash([]); g.fillStyle = '#a81a12'; g.beginPath(); g.arc(410, 300, 12, 0, 6.28); g.fill();
+      stencil(28); g.fillText('GROUND ZERO', 430, 290);
+      g.fillStyle = '#1a3a6a'; g.beginPath(); g.arc(760, 520, 10, 0, 6.28); g.fill(); g.font = '700 22px monospace'; g.fillText('A-1', 776, 528);
+      g.fillStyle = '#1a1a14'; stencil(34); g.fillText('METROPOLITAN DISTRICT · SHEET 4', 30, 46);
+      // someone has written across it later, in grease pencil
+      g.strokeStyle = 'rgba(20,20,20,0.85)'; g.lineWidth = 6; g.font = '700 46px cursive'; g.fillStyle = 'rgba(20,20,20,0.85)'; g.fillText('THERE IS NOTHING LEFT', 300, 600);
+      age(4000, 0.1); stains(8);
+    } else if (kind === 'roster') {
+      g.fillStyle = '#e0dac4'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#1a1a14'; type(26, 700); g.fillText('DUTY ROSTER - A-1 GARRISON', 30, 56);
+      type(20);
+      const names = ['CPL HALE', 'PTE OKAFOR', 'PTE LINDQVIST', 'SGT MORROW', 'PTE DAVIES', 'PTE REYES', 'LCPL ABARA', 'PTE KOVAC', 'PTE SATO', 'CPL BRENNAN', 'PTE NOLAN', 'PTE VASQUEZ'];
+      names.forEach((n, i) => {
+        const y = 110 + i * 42; g.fillStyle = '#1a1a14'; g.fillText(n, 40, y); g.fillText(['HATCH', 'DECON', 'RADIO', 'STORES'][i % 4], 300, y);
+        if (i < 9 + (seed % 3)) { g.strokeStyle = 'rgba(140,20,14,0.9)'; g.lineWidth = 3; g.beginPath(); g.moveTo(34, y - 7); g.lineTo(440, y - 9); g.stroke(); }
+      });
+      g.fillStyle = 'rgba(140,20,14,0.9)'; g.font = '700 26px cursive'; g.fillText('nobody goes up', 220, h - 50);
+      age(); stains(4);
+    } else if (kind === 'stencil') {
+      g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(232,226,206,0.88)'; stencil(180, 900); g.textAlign = 'center'; g.fillText(['A-1', 'SECTOR 2', 'SECTOR 3', 'OPS', 'HATCH'][seed % 5], w / 2, 190);
+      g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 400; i++) { g.fillStyle = 'rgba(0,0,0,' + r() * 0.5 + ')'; g.fillRect(r() * w, r() * h, 2 + r() * 8, 2 + r() * 8); } g.globalCompositeOperation = 'source-over';
+    } else if (kind === 'decon') {
+      g.fillStyle = '#e8e6dc'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#1a5a3a'; g.fillRect(0, 0, w, 80); g.fillStyle = '#f0f0e8'; stencil(46); g.fillText('DECONTAMINATION PROCEDURE', 24, 58);
+      g.fillStyle = '#1a1a14';
+      for (let k = 0; k < 4; k++) {
+        const x = 30 + k * 172; g.strokeStyle = '#1a1a14'; g.lineWidth = 4; g.strokeRect(x, 110, 150, 230);
+        g.beginPath(); g.arc(x + 75, 170, 18, 0, 6.28); g.fill(); g.fillRect(x + 62, 190, 26, 80); g.fillRect(x + 60, 270, 10, 50); g.fillRect(x + 80, 270, 10, 50);
+        if (k === 1) for (let j = 0; j < 12; j++) g.fillRect(x + 20 + j * 10, 120 + (j % 3) * 8, 3, 30);
+        if (k === 2) { g.fillStyle = '#2a6aaa'; g.fillRect(x + 10, 300, 130, 30); g.fillStyle = '#1a1a14'; }
+        type(20, 700); g.fillText(['1. STRIP', '2. SHOWER', '3. SCRUB', '4. DRESS'][k], x + 10, 370);
+      }
+      type(18); g.fillText('ALL CLOTHING TO THE INCINERATOR. NO EXCEPTIONS.', 30, 430); g.fillText('DO NOT RE-ENTER WITHOUT A FULL CYCLE.', 30, 458);
+      age(1800, 0.08);
+    } else if (kind === 'graffiti') {
+      // scrawled by someone who was still alive when they wrote it
+      g.clearRect(0, 0, w, h);
+      const msgs = ['IT SEES YOU MOVE', 'DONT MOVE', 'IT ONLY SEES MOVING', 'STAND STILL', 'DONT OPEN THE HATCH', 'WE OPENED IT'];
+      g.fillStyle = seed % 2 ? 'rgba(120,16,10,0.9)' : 'rgba(18,16,14,0.9)'; g.font = '700 ' + (78 + (seed % 3) * 10) + 'px cursive'; g.textAlign = 'center';
+      g.save(); g.translate(w / 2, h / 2 + 30); g.rotate((r() - 0.5) * 0.12); g.fillText(msgs[seed % msgs.length], 0, 0); g.restore();
+      for (let i = 0; i < 30; i++) { g.fillRect(w / 2 - 300 + r() * 600, h / 2 + 50 + r() * 10, 3, 20 + r() * 80); }
+    } else if (kind === 'clocks') {
+      g.fillStyle = '#20221e'; g.fillRect(0, 0, w, h);
+      const cities = ['WASHINGTON', 'LONDON', 'MOSCOW', 'PEKING'];
+      cities.forEach((c, i) => {
+        const cx = 128 + i * 256, cy = 110;
+        g.fillStyle = '#e8e4d4'; g.beginPath(); g.arc(cx, cy, 80, 0, 6.28); g.fill();
+        g.strokeStyle = '#1a1a14'; g.lineWidth = 3; for (let k = 0; k < 12; k++) { const a = k / 12 * 6.28; g.beginPath(); g.moveTo(cx + Math.cos(a) * 68, cy + Math.sin(a) * 68); g.lineTo(cx + Math.cos(a) * 78, cy + Math.sin(a) * 78); g.stroke(); }
+        // every one stopped at the same moment
+        const hh = (4 + i * 5) % 12, mm = 17;
+        g.lineWidth = 7; g.beginPath(); g.moveTo(cx, cy); const ah = (hh + mm / 60) / 12 * 6.28 - 1.57; g.lineTo(cx + Math.cos(ah) * 40, cy + Math.sin(ah) * 40); g.stroke();
+        g.lineWidth = 4; g.beginPath(); g.moveTo(cx, cy); const am = mm / 60 * 6.28 - 1.57; g.lineTo(cx + Math.cos(am) * 62, cy + Math.sin(am) * 62); g.stroke();
+        g.fillStyle = '#e8e4d4'; g.font = '700 26px monospace'; g.textAlign = 'center'; g.fillText(c, cx, 228);
+      });
+    } else if (kind === 'plot') {
+      // the plotting table: the hemisphere in blue and white, and on it the markers where it all came down
+      g.fillStyle = '#1a2a3e'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(160,190,210,0.35)'; g.lineWidth = 2;
+      for (let k = 1; k < 8; k++) { g.beginPath(); g.arc(512, 512, k * 64, 0, 6.28); g.stroke(); }
+      for (let k = 0; k < 24; k++) { const a = k / 24 * 6.28; g.beginPath(); g.moveTo(512, 512); g.lineTo(512 + Math.cos(a) * 500, 512 + Math.sin(a) * 500); g.stroke(); }
+      g.fillStyle = 'rgba(200,210,190,0.55)';
+      for (let i = 0; i < 9; i++) { g.beginPath(); const cx = 512 + (r() - 0.5) * 700, cy = 512 + (r() - 0.5) * 700; g.moveTo(cx, cy); for (let k = 0; k < 14; k++) { const a = k / 14 * 6.28, rr = 40 + r() * 90; g.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.8); } g.fill(); }
+      g.fillStyle = '#c8241a'; for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(512 + (r() - 0.5) * 760, 512 + (r() - 0.5) * 760, 6 + r() * 6, 0, 6.28); g.fill(); }
+      age(1500, 0.12);
+    }
+  });
+  const transparent = kind === 'stencil' || kind === 'graffiti';
+  const m = new THREE.MeshStandardMaterial({ map: tex, roughness: kind === 'plot' ? 0.35 : 0.85, transparent, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  m.userData.noShadow = true;
+  BreachArt[key] = m;
+  return m;
+}
+
+// ---------- the furniture of a bunker ----------
+// bunks: two tiers of steel frame, a thin mattress, a blanket folded or kicked off, a pillow
+function bunkBed(B, f, c) {
+  const ff = frame(f.ox, f.oz, f.rot + (c.rnd() - 0.5) * 0.06), st = BM.steel, rnd = c.rnd;
+  if (c.L) for (const x of [-0.7, 0, 0.7]) { const p = ff.w(x, 0, 0); addCollider(c.L, p[0], p[2], 0.42); }
+  for (const x of [-0.95, 0.95]) for (const z of [-0.42, 0.42]) ff.cbox(B, st, x, 0.85, z, 0.05, 1.7, 0.05, 0.008);
+  for (const y of [0.42, 1.38]) {
+    for (const z of [-0.42, 0.42]) ff.cbox(B, st, 0, y, z, 1.9, 0.05, 0.04, 0.006);
+    for (const x of [-0.95, 0.95]) ff.cbox(B, st, x, y, 0, 0.04, 0.05, 0.84, 0.006);
+    if (rnd() < 0.88) {
+      ff.cbox(B, WM.mattress, 0, y + 0.08, 0, 1.84, 0.1, 0.8, 0.04);
+      if (rnd() < 0.7) ff.cbox(B, BM.blanket, 0.3 + (rnd() - 0.5) * 0.3, y + 0.15, 0, 1.0 + rnd() * 0.4, 0.05, 0.84, 0.03, (rnd() - 0.5) * 0.3);
+      else ff.cbox(B, BM.blanket, 0.75, y + 0.18, 0.1, 0.32, 0.12, 0.5, 0.04, 0.2);
+      if (rnd() < 0.8) ff.cbox(B, WM.sheet, -0.75, y + 0.18, 0, 0.3, 0.1, 0.5, 0.05, (rnd() - 0.5) * 0.4);
+    }
+  }
+  ff.cbox(B, st, 0.95, 1.0, 0.44, 0.04, 0.9, 0.03, 0.005);
+  for (let k = 0; k < 4; k++) ff.cbox(B, st, 0.95, 0.62 + k * 0.22, 0.46, 0.03, 0.03, 0.12, 0.005);
+  // a name tag on the foot rail, and sometimes a body under the top blanket
+  ff.geo(B, labelMat(['HALE', 'OKAFOR', 'MORROW', 'DAVIES', 'REYES', 'KOVAC', 'SATO', 'NOLAN'][Math.floor(rnd() * 8)], { bg: '#d8d4c0', fg: '#1a1a14', w: 256, h: 64, size: 40 }), planeGeo(0.18, 0.045), 0.975, 0.5, 0, Math.PI / 2);
+  if (rnd() < 0.08) { ff.cbox(B, BM.blanket, 0, 1.6, 0, 1.6, 0.18, 0.5, 0.08); ff.sphere(B, BM.blanket, -0.7, 1.62, 0, 0.13, 0.8); }
+}
+// a footlocker at the end of every bunk
+function footlocker(B, f, c) {
+  const ff = frame(f.ox, f.oz, f.rot + (c.rnd() - 0.5) * 0.2), o = BM.olive;
+  ff.cbox(B, o, 0, 0.21, 0, 0.8, 0.42, 0.44, 0.015);
+  ff.cbox(B, o, 0, 0.44, c.rnd() < 0.2 ? -0.1 : 0, 0.82, 0.04, 0.46, 0.01, 0, 1, c.rnd() < 0.2 ? -0.9 : 0);
+  for (const x of [-0.3, 0.3]) ff.cbox(B, BM.gunmetal, x, 0.36, 0.225, 0.06, 0.05, 0.02, 0.004);
+  ff.cbox(B, BM.gunmetal, 0, 0.21, 0.225, 0.1, 0.03, 0.02, 0.004);
+  if (c.L) { const p = ff.w(0, 0, 0); addCollider(c.L, p[0], p[2], 0.4); }
+}
+// sandbags: a low wall of them, sagging, some split
+function sandbags(B, f, c) {
+  const rnd = c.rnd;
+  for (let row = 0; row < 4; row++) for (let k = 0; k < 2; k++) {
+    const x = (k - 0.5) * 0.5 + (row % 2) * 0.12, y = 0.11 + row * 0.2;
+    f.cbox(B, BM.sandbag, x, y, (rnd() - 0.5) * 0.06, 0.5, 0.2, 0.32, 0.08, (rnd() - 0.5) * 0.2);
+  }
+  if (rnd() < 0.3) f.geo(B, decalMat('grime'), cachedGeo('sandSpill', () => new THREE.PlaneGeometry(0.8, 0.8).rotateX(-Math.PI / 2)), (rnd() - 0.5) * 0.4, 0.008, 0.4, rnd() * 6);
+  if (c.L) { const p = f.w(0, 0, 0); addCollider(c.L, p[0], p[2], 0.48); }
+}
+// the mess tables: steel tops on welded legs, trays still on some of them
+function messTable(B, f, c) {
+  const st = BM.steel;
+  f.cbox(B, st, 0, 0.74, 0, 1.0, 0.04, 0.9, 0.006);
+  for (const z of [-0.38, 0.38]) f.cbox(B, st, 0, 0.36, z, 0.05, 0.72, 0.05, 0.006);
+  f.cbox(B, st, 0, 0.12, 0, 0.05, 0.05, 0.8, 0.006);
+  const r = c.rnd();
+  if (r < 0.45) { const tx = (c.rnd() - 0.5) * 0.4, tz = (c.rnd() - 0.5) * 0.4; f.cbox(B, plainMat(0x8a8c88, { roughness: 0.35, metalness: 0.7 }), tx, 0.77, tz, 0.4, 0.02, 0.3, 0.005, c.rnd() * 0.4); f.cyl(B, plainMat(0xd8d4c8, { roughness: 0.35 }), tx + 0.08, 0.81, tz, 0.04, 0.035, 0.07, 10); }
+  else if (r < 0.6) f.cyl(B, plainMat(0x4a5a3a, { roughness: 0.4, metalness: 0.6 }), (c.rnd() - 0.5) * 0.5, 0.82, (c.rnd() - 0.5) * 0.4, 0.04, 0.04, 0.11, 12);
+  if (c.L) { const p = f.w(0, 0, 0); addCollider(c.L, p[0], p[2], 0.55); }
+}
+// a gun rack with nothing left in it but one bayonet; or a shelf of tins
+function gunRack(B, f, c) {
+  const wd = mat('wood', { color: 0x5a4430 });
+  f.cbox(B, wd, 0, 0.9, 0.18, 0.96, 1.8, 0.06, 0.01);
+  f.cbox(B, wd, 0, 0.35, 0.36, 0.96, 0.05, 0.36, 0.01);
+  for (let k = 0; k < 6; k++) { const x = -0.4 + k * 0.16; f.cbox(B, wd, x, 1.32, 0.3, 0.02, 0.1, 0.2, 0.004); }
+  if (c.rnd() < 0.5) f.cbox(B, BM.gunmetal, -0.1, 0.9, 0.32, 0.02, 0.5, 0.02, 0.003, 0, 1, 0.1);
+  f.geo(B, labelMat('SIGN OUT EVERY WEAPON', { bg: '#d8d4c0', fg: '#1a1a14', w: 512, h: 64, size: 34 }), planeGeo(0.6, 0.075), 0, 1.72, 0.215);
+}
+function tinShelf(B, f, c) {
+  const st = BM.steel, rnd = c.rnd;
+  for (const x of [-0.46, 0.46]) for (const z of [0.05, 0.5]) f.cbox(B, st, x, 0.95, z, 0.04, 1.9, 0.04, 0.005);
+  for (const y of [0.2, 0.7, 1.2, 1.7]) {
+    f.cbox(B, st, 0, y, 0.28, 0.96, 0.03, 0.5, 0.005);
+    const n = Math.floor(rnd() * 8);
+    for (let k = 0; k < n; k++) f.cyl(B, plainMat([0x5a6a3a, 0x8a7a4a, 0x6a4a2a][k % 3], { roughness: 0.4, metalness: 0.6 }), -0.4 + rnd() * 0.8, y + 0.07, 0.12 + rnd() * 0.3, 0.04, 0.04, 0.11, 10);
+  }
+  if (c.L) { const p = f.w(0, 0, 0.28); addCollider(c.L, p[0], p[2], 0.48); }
+}
+const _breachProps = Object.assign({}, PROP_BUILDERS);
+PROP_BUILDERS.g = (B, f, c) => (c.theme === 'barracks' ? bunkBed(B, f, c) : _breachProps.g(B, f, c));
+PROP_BUILDERS.x = (B, f, c) => (c.theme === 'barracks' ? footlocker(B, f, c) : c.theme === 'bunker' || c.theme === 'silo' ? sandbags(B, f, c) : _breachProps.x(B, f, c));
+PROP_BUILDERS.t = (B, f, c) => (c.theme === 'barracks' ? messTable(B, f, c) : _breachProps.t(B, f, c));
+PROP_BUILDERS.$ = (B, f, c) => (c.theme === 'bunker' ? gunRack(B, f, c) : c.theme === 'barracks' || c.theme === 'silo' ? tinShelf(B, f, c) : _breachProps.$(B, f, c));
+// tanks: pressure bottles and water tanks in a bunker, not specimen tanks. In the operations room the cells
+// are the plotting table's, which is drawn whole as a set piece.
+function bunkerTanks(B, cells, c) {
+  if (c.theme === 'command') return;
+  const cols = c.theme === 'decon' ? [0xb8bcb4, 0x8a9a8a] : c.theme === 'barracks' ? [0x8a8c88] : [0x4a5a3a, 0x8a2a1c, 0x5a6a7a];
+  const labels = c.theme === 'decon' ? ['STEAM', 'HOT WATER'] : c.theme === 'barracks' ? ['STOCK POT'] : ['O2', 'WATER', 'FUEL'];
+  for (const [x, z] of cells) {
+    const f = frame(x + 0.5, z + 0.5, c.rnd() * 6), k = Math.floor(c.rnd() * cols.length), m = mat('metal', { color: cols[k] });
+    if (c.theme === 'barracks') { f.cyl(B, m, 0, 0.45, 0, 0.42, 0.42, 0.9, 20); f.cyl(B, mat('steelDark'), 0, 0.92, 0, 0.44, 0.44, 0.04, 20); continue; }
+    f.cyl(B, m, 0, 0.98, 0, 0.36, 0.36, 1.7, 20); f.sphere(B, m, 0, 1.83, 0, 0.36, 0.5); f.sphere(B, m, 0, 0.13, 0, 0.36, 0.35);
+    f.cyl(B, mat('steelDark'), 0, 2.08, 0, 0.05, 0.05, 0.2, 10); f.cyl(B, plainMat(0xa0281c, { roughness: 0.5, metalness: 0.4 }), 0, 2.2, 0, 0.1, 0.1, 0.03, 12);
+    for (let j = 0; j < 3; j++) { const a = j / 3 * 6.28; f.cbox(B, mat('steelDark'), Math.cos(a) * 0.3, 0.1, Math.sin(a) * 0.3, 0.06, 0.2, 0.06, 0.01); }
+    f.cyl(B, plainMat(0xd8d0b0, { roughness: 0.4 }), 0, 1.5, 0.37, 0.06, 0.06, 0.02, 14, Math.PI / 2);
+    f.geo(B, labelMat(labels[k % labels.length], { fg: '#e8e4d6', w: 256, h: 96, size: 64 }), planeGeo(0.4, 0.15), 0, 1.15, 0.365);
+  }
+}
+const _breachCluster = buildMachineCluster;
+buildMachineCluster = function (B, ch, cells, c) { if (ch === 'T' && BUNKER.has(c.theme)) return bunkerTanks(B, cells, c); return _breachCluster(B, ch, cells, c); };
+
+Object.assign(WALL_ITEMS, {
+  cdPoster(B, f, r) { f.geo(B, breachArt('poster', Math.floor(r() * 3)), planeGeo(0.5, 0.7), 0, 1.6, 0.006, 0, 0, (r() - 0.5) * 0.06); },
+  shelterSign(B, f, r) { f.cbox(B, BM.steel, 0, 2.2, 0.01, 0.5, 0.5, 0.012, 0.004); f.geo(B, breachArt('shelter', 0), planeGeo(0.48, 0.48), 0, 2.2, 0.018); },
+  gasmasks(B, f, r) {
+    const rub = BM.rubber, gl = plainMat(0x2a3a3a, { roughness: 0.1, metalness: 0.3 });
+    for (let k = 0; k < 3; k++) {
+      if (r() < 0.3) continue;
+      const x = (k - 1) * 0.3; f.cyl(B, BM.steel, x, 1.7, 0.03, 0.006, 0.006, 0.06, 6, Math.PI / 2);
+      f.sphere(B, rub, x, 1.55, 0.07, 0.09, 1.2); for (const s of [-1, 1]) f.cyl(B, gl, x + s * 0.035, 1.6, 0.14, 0.025, 0.025, 0.01, 10, Math.PI / 2);
+      f.cyl(B, plainMat(0x4a4c40, { roughness: 0.5, metalness: 0.4 }), x, 1.45, 0.15, 0.035, 0.035, 0.07, 10, Math.PI / 2);
+    }
+  },
+  highScratch(B, f, r) { for (let k = 0; k < 2; k++) f.geo(B, decalMat('scratch'), planeGeo(0.9, 1.3), (k - 0.5) * 0.8, 2.25 + r() * 0.3, 0.007, 0, 0, (r() - 0.5) * 0.4); },
+  graffiti(B, f, r) { f.geo(B, breachArt('graffiti', Math.floor(r() * 6)), planeGeo(1.6, 0.8), 0, 1.5 + r() * 0.3, 0.007); },
+  roster(B, f, r) { f.cbox(B, mat('wood', { color: 0x6a5240 }), 0, 1.5, 0.008, 0.46, 0.6, 0.015, 0.004); f.geo(B, breachArt('roster', Math.floor(r() * 3)), planeGeo(0.4, 0.53), 0, 1.5, 0.018); },
+  fieldPhone(B, f, r) {
+    f.cbox(B, BM.olive, 0, 1.35, 0.06, 0.24, 0.2, 0.12, 0.02); f.cbox(B, PM.black, 0, 1.47, 0.12, 0.26, 0.05, 0.06, 0.02);
+    f.cyl(B, BM.gunmetal, 0.08, 1.3, 0.13, 0.03, 0.03, 0.02, 10, Math.PI / 2);
+    B.add(PM.black, tubeGeo([f.w(-0.1, 1.42, 0.13), f.w(-0.15, 1.1, 0.16), f.w(-0.06, 0.95, 0.12)], 0.006, 10, 4), _m4.identity());
+  },
+});
+Object.assign(DRESS.kits, {
+  bunker: [['cdPoster', 0.04], ['ext', 0.03], ['vent', 0.03], ['panel', 0.03], ['fieldPhone', 0.015], ['gasmasks', 0.03], ['emerg', 0.04], ['highScratch', 0.03], ['graffiti', 0.012], ['alarm', 0.02]],
+  decon: [['eyewash', 0.04], ['hooks', 0.05], ['vent', 0.04], ['gasmasks', 0.04], ['emerg', 0.04], ['highScratch', 0.03], ['graffiti', 0.01], ['notice', 0.03]],
+  barracks: [['cdPoster', 0.05], ['roster', 0.03], ['hooks', 0.04], ['vent', 0.03], ['emerg', 0.03], ['highScratch', 0.03], ['graffiti', 0.015], ['clock', 0.015]],
+  command: [['cork', 0.04], ['roster', 0.03], ['phone', 0.03], ['fieldPhone', 0.02], ['clock', 0.02], ['emerg', 0.04], ['highScratch', 0.02], ['alarm', 0.02], ['cdPoster', 0.02]],
+  silo: [['panel', 0.06], ['pipeV', 0.06], ['gauge', 0.05], ['ext', 0.03], ['emerg', 0.04], ['shelterSign', 0.01], ['highScratch', 0.03], ['ladder', 0.02], ['graffiti', 0.008]],
+});
+Object.assign(AMBIENT_EVENTS, {
+  bunker: [['groan', 12, 30], ['clunk', 16, 40], ['drip', 8, 20]],
+  decon: [['drip', 2, 7], ['clunk', 18, 40], ['valve', 25, 60]],
+  barracks: [['creak', 12, 30], ['knock', 18, 45], ['radio', 30, 70]],
+  command: [['radio', 14, 34], ['click', 9, 22], ['beep', 26, 60]],
+  silo: [['groan', 8, 20], ['clunk', 12, 28], ['drip', 5, 14]],
+});
+
+// ---------- the maps ----------
+const BREACH_META = [
+  { name: 'Lift Head', theme: 'bunker', ceil: 3.2, objective: 'The way on is a keycard door. The duty officer kept the card.',
+    note: 'GUARD POST LOG. Day 1: hatch sealed at 1600. Day 9: Pte Kovac went up the ladder to check the seals. He came back down in the night. He was not Kovac. It only came for the ones who were moving. Sgt Morrow says stand still. Stand still.' },
+  { name: 'Decontamination', theme: 'decon', ceil: 3.0, objective: 'Purge the decon line: turn both valves. Stand still if it turns your way.',
+    note: 'DECON LOG: full cycle for every return from the surface - strip, shower, scrub, dress. The last team back did the full cycle. Twice. It was already inside one of them.' },
+  { name: 'Barracks', theme: 'barracks', ceil: 3.0, objective: 'The armoury door has a code. The garrison chalked it round the barracks.',
+    note: 'To whoever is still down here: it sees you when you move. Not the light. Not the noise. When it looks at you, freeze. It will come right up to your face. Do not breathe. It goes away. (They found Brennan standing in the mess for nine hours.)' },
+  { name: 'Operations', theme: 'command', ceil: 3.6, objective: 'Override the blast door from the cipher room console.',
+    note: 'OPERATIONS LOG, 17:04. All stations report contact lost. Surface monitors show nothing moving. Nothing at all. Commander orders the hatch kept shut indefinitely. Something on the monitors at 17:06. Something very large.' },
+  { name: 'The Hatch', theme: 'silo', ceil: 9.0, liftH: 14, objective: 'Cycle the hatch, then get everyone onto the platform.',
+    note: 'HATCH CYCLE: thirty seconds. Klaxon and beacons run the whole time. The platform rises when the hatch is open and everyone is aboard. Whatever you hear through the hatch while it opens: do not stop.' },
+];
+
+function breachArea1(rnd) { // Lift Head: the guard post where the lift comes up into the bunker
+  const g = new MapGrid(34, 22);
+  // the car you came up in, set into the west wall
+  g.fill(0, 8, 5, 15, '#'); g.fill(1, 9, 4, 14, 'z'); g.put([[5, 11], [5, 12]], 'z');
+  g.put([[2, 10], [3, 10], [2, 13], [3, 13]], '@');
+  g.floor(6, 2, 32, 19);
+  for (const [x, z] of [[14, 7], [14, 15], [22, 7], [22, 15]]) g.set(x, z, 'I');
+  // the guard post: a booth with a window onto the hall
+  g.vline(13, 2, 5, '#'); g.hline(6, 13, 5, '#'); g.put([[7, 5], [8, 5], [12, 5]], '~'); g.set(10, 5, '.');
+  g.put([[8, 2], [9, 2]], 't'); g.set(9, 3, 'h'); g.put([[12, 2], [12, 3]], 'l'); g.set(7, 4, 'k');
+  // sandbags in front of the lift, a rack of nothing, rations, water
+  g.put([[8, 8], [8, 9], [8, 14], [8, 15]], 'x');
+  g.put([[16, 2], [17, 2], [18, 2]], '$');
+  g.put([[30, 2], [31, 2], [31, 3]], 'X'); g.put([[24, 19], [25, 19]], 'o');
+  g.put([[16, 19], [17, 19]], 'b');
+  // the first-aid post: the shelter
+  g.fill(23, 12, 33, 21, '#'); g.fill(24, 13, 32, 20, 's'); g.set(27, 12, 'S');
+  g.put([[32, 14], [32, 15]], 'l'); g.set(25, 20, 't'); g.set(26, 19, 'h'); g.set(29, 16, '*'); g.set(31, 20, 'n');
+  g.put([[33, 6], [33, 7]], 'K');
+  g.put([[11, 11], [18, 10], [27, 8], [18, 17]], 'L'); g.set(7, 12, '!'); g.set(10, 3, '*');
+  g.scatter(rnd, 6, 6, 32, 19, ':', 18); g.scatter(rnd, 6, 6, 32, 19, '%', 6);
+  return g;
+}
+
+function breachArea2(rnd) { // Decontamination: three chambers in a line, curtained, with rooms off them
+  const g = new MapGrid(44, 20);
+  g.floor(1, 7, 42, 12);
+  g.set(0, 9, '<');
+  for (const x of [13, 27]) { g.vline(x, 7, 12, '#'); g.fill(x, 9, x, 10, ';'); }
+  // north: the pump room (a valve), the suit store, the boiler room
+  g.floor(3, 1, 11, 5); g.set(7, 6, '.');
+  g.floor(15, 1, 24, 5); g.set(19, 6, '.');
+  g.floor(29, 1, 40, 5); g.fill(33, 6, 34, 6, '.');
+  // south: the showers (the other valve), the laundry
+  g.floor(3, 14, 12, 18); g.set(8, 13, '.');
+  g.floor(16, 14, 25, 18); g.set(20, 13, '.');
+  // the medical bay: the shelter
+  g.fill(28, 13, 43, 19, '#'); g.fill(29, 14, 42, 18, 's'); g.set(34, 13, 'S');
+  g.put([[42, 15], [42, 16]], 'l'); g.set(30, 18, 'g'); g.set(38, 14, 't'); g.set(37, 15, 'h'); g.set(35, 16, '*'); g.set(41, 18, 'n');
+  g.put([[43, 9], [43, 10]], 'V');
+  g.set(4, 1, 'v'); g.set(12, 18, 'v');
+  // pumps and tanks, lockers of suits, the boilers; benches along the line
+  g.put([[6, 2], [9, 2]], 'm'); g.set(3, 5, 'T');
+  for (let x = 16; x <= 23; x++) g.set(x, 1, 'l');
+  g.put([[31, 2], [32, 2], [37, 2], [38, 2]], 'T'); g.put([[40, 4], [40, 5]], 'o');
+  g.put([[4, 7], [5, 7], [17, 12], [18, 12], [31, 7], [32, 7]], 'b');
+  g.put([[17, 17], [18, 17], [23, 15], [24, 15]], 'x'); g.put([[22, 18], [23, 18]], '$');
+  for (const [x, z] of [[5, 15], [6, 17], [9, 16], [10, 14], [4, 17]]) g.set(x, z, 'w');
+  g.set(20, 10, '&');
+  g.put([[6, 9], [20, 9], [35, 10]], 'L'); g.put([[7, 3], [20, 3], [34, 3], [7, 16], [20, 16]], '*'); g.set(41, 8, '!');
+  g.scatter(rnd, 1, 7, 42, 12, ':', 14); g.scatter(rnd, 1, 1, 42, 18, '%', 8);
+  return g;
+}
+
+function breachArea3(rnd) { // Barracks: the dormitory, the mess and the kitchen off one long corridor
+  const g = new MapGrid(46, 26);
+  g.set(0, 12, '<');
+  g.floor(1, 12, 44, 13);
+  // the dormitory: bunks along both walls and back to back down the middle, a footlocker at each
+  g.floor(1, 1, 30, 10); g.put([[8, 11], [22, 11]], '.');
+  for (const x of [3, 7, 11, 15, 19, 23, 27]) { g.set(x, 1, 'g'); g.set(x, 5, 'g'); g.set(x, 6, 'g'); g.set(x, 10, 'g'); g.set(x, 2, 'x'); g.set(x, 9, 'x'); }
+  // the mess: long tables and benches
+  g.floor(1, 15, 30, 24); g.fill(14, 14, 17, 14, '.');
+  for (const tz of [17, 21]) for (const [x0, x1] of [[4, 11], [19, 26]]) for (let x = x0; x <= x1; x++) { g.set(x, tz, 't'); if (x % 2 === 0) { g.set(x, tz - 1, 'b'); g.set(x, tz + 1, 'b'); } }
+  // the kitchen
+  g.floor(33, 15, 44, 24); g.set(38, 14, '.');
+  for (let x = 36; x <= 41; x++) g.set(x, 18, 't');
+  g.put([[44, 17], [44, 18], [44, 19]], '$'); g.put([[34, 23], [35, 23]], 'T'); g.put([[42, 23], [43, 23], [43, 22]], 'X');
+  // the officers' quarters: the shelter
+  g.fill(32, 0, 45, 11, '#'); g.fill(33, 1, 44, 10, 's'); g.set(38, 11, 'S');
+  g.set(34, 2, 'g'); g.set(42, 3, 't'); g.set(42, 4, 'h'); g.put([[44, 6], [44, 7]], 'l'); g.set(38, 6, '*'); g.set(43, 10, 'n');
+  g.put([[45, 12], [45, 13]], 'N');
+  g.set(30, 4, '1'); g.set(1, 20, '2'); g.set(44, 24, '3'); g.set(17, 1, '4');
+  g.set(15, 19, '&');
+  g.put([[8, 3], [16, 8], [24, 3], [8, 19], [22, 19], [36, 12]], 'L'); g.set(38, 20, '*'); g.set(43, 13, '!');
+  g.scatter(rnd, 1, 12, 44, 13, ':', 10); g.scatter(rnd, 1, 1, 44, 24, '%', 10);
+  return g;
+}
+
+function breachArea4(rnd) { // Operations: the plotting table, the stations round it, radio and cipher rooms
+  const g = new MapGrid(44, 26);
+  g.set(0, 12, '<');
+  g.floor(1, 11, 6, 13);
+  g.floor(7, 6, 32, 20);
+  // the plotting table in the middle of the floor
+  g.fill(16, 11, 23, 14, 'T');
+  // stations round the walls
+  for (let x = 9; x <= 30; x += 3) { g.set(x, 6, 'q'); g.set(x, 7, 'h'); }
+  for (const x of [9, 12, 27, 30]) { g.set(x, 20, 'q'); g.set(x, 19, 'h'); }
+  // the radio room and the cipher room off the north wall; the map store and the commander off the south
+  g.floor(8, 1, 19, 4); g.set(13, 5, '.');
+  g.floor(22, 1, 31, 4); g.set(26, 5, '.');
+  g.put([[9, 1], [10, 1], [11, 1]], 'q'); g.set(10, 2, 'h'); g.put([[17, 1], [18, 1]], 'R');
+  g.set(31, 1, 'Q'); g.put([[22, 1], [23, 1]], 'd'); g.set(28, 3, 't'); g.set(28, 2, 'h');
+  g.floor(8, 22, 18, 24); g.set(13, 21, '.');
+  g.put([[8, 22], [9, 22], [10, 22], [17, 24], [18, 24]], 'd'); g.put([[12, 24], [13, 24], [14, 24]], '$');
+  g.fill(21, 21, 33, 25, '#'); g.fill(22, 22, 32, 24, 's'); g.set(25, 21, 'S');
+  g.set(30, 23, 't'); g.set(30, 22, 'h'); g.put([[32, 22], [32, 23]], 'l'); g.set(24, 23, '*'); g.set(22, 24, 'n');
+  // the way out: a corridor to the blast door
+  g.floor(33, 11, 42, 15);
+  g.put([[43, 12], [43, 13], [43, 14]], 'H');
+  g.set(12, 16, '&');
+  g.put([[12, 9], [27, 9], [12, 17], [27, 17], [37, 13]], 'L'); g.put([[13, 2], [27, 2], [13, 23]], '*'); g.set(41, 11, '!');
+  g.scatter(rnd, 7, 6, 32, 20, ':', 12); g.scatter(rnd, 1, 1, 42, 24, '%', 8);
+  return g;
+}
+
+function breachArea5(rnd) { // The Hatch: a concrete well, a platform in the middle of it, and the hatch overhead
+  const g = new MapGrid(40, 30);
+  g.set(0, 14, '<');
+  g.floor(1, 13, 8, 15);
+  g.floor(9, 2, 38, 27);
+  // the platform, under the shaft, railed round with a way on at each side
+  g.fill(19, 10, 27, 18, 'z');
+  for (let x = 18; x <= 28; x++) { g.set(x, 9, 'Y'); g.set(x, 19, 'Y'); }
+  for (let z = 10; z <= 18; z++) if (z < 13 || z > 15) { g.set(18, z, 'Y'); g.set(28, z, 'Y'); }
+  // the control booth on the north wall
+  g.set(23, 2, 'u'); g.put([[21, 2], [22, 2], [24, 2], [25, 2]], 'q');
+  // gas bottles, drums, crates, a ring of sandbags round where the garrison made its last stand
+  g.put([[10, 2], [11, 2], [12, 2]], 'T'); g.put([[36, 2], [37, 2], [37, 3]], 'X'); g.put([[34, 26], [35, 26], [36, 26]], 'o');
+  for (const [x, z] of [[14, 9], [15, 8], [16, 7], [30, 7], [31, 8], [32, 9], [14, 20], [15, 21], [31, 21], [32, 20]]) g.set(x, z, 'x');
+  g.put([[38, 10], [38, 11], [38, 12]], '$');
+  // the blast lock by the way in: the shelter
+  g.fill(8, 21, 17, 29, '#'); g.fill(9, 22, 16, 28, 's'); g.set(13, 21, 'S');
+  g.put([[16, 23], [16, 24]], 'l'); g.set(10, 28, 't'); g.set(11, 27, 'h'); g.set(12, 25, '*'); g.set(15, 28, 'n');
+  g.set(33, 22, '&');
+  g.put([[13, 6], [33, 6], [13, 24], [33, 16]], 'L'); g.put([[17, 8], [29, 8], [17, 20], [29, 20]], '!'); g.set(23, 4, '*');
+  g.scatter(rnd, 9, 2, 38, 27, ':', 24); g.scatter(rnd, 9, 2, 38, 27, '%', 8);
+  return g;
+}
+
+const BREACH_BUILDERS = [breachArea1, breachArea2, breachArea3, breachArea4, breachArea5];
+LEVELS.l3 = { key: 'l3', title: 'Breach - A1', builders: BREACH_BUILDERS, meta: BREACH_META, seed: 70310, monster: 'pale' };
+
+// ---------- the rooms ----------
+// a ceiling-mounted rotating beacon: a base, a red dome, the reflector inside it that turns
+function beacon(B, f, y, down = true) {
+  f.cyl(B, BM.gunmetal, 0, y, 0, 0.09, 0.11, 0.08, 14);
+  f.sphere(B, plainMat(0x5a0a06, { roughness: 0.2, transparent: true, opacity: 0.85, ws: false }), 0, y + (down ? -0.06 : 0.06), 0, 0.085, down ? -0.9 : 0.9);
+}
+function showerHead(B, f, ceil) {
+  f.cyl(B, PM.chrome, 0, (ceil + 2.15) / 2, 0.04, 0.012, 0.012, ceil - 2.15, 8);
+  f.cyl(B, PM.chrome, 0, 2.15, 0.12, 0.012, 0.012, 0.18, 8, Math.PI / 2);
+  f.cyl(B, PM.chrome, 0, 2.12, 0.22, 0.05, 0.03, 0.04, 12, 0.4);
+  f.cyl(B, PM.chrome, 0.15, 1.15, 0.05, 0.03, 0.03, 0.03, 10, Math.PI / 2);
+}
+function hazmatSuit(B, f, x, rnd) {
+  const o = BM.hazmat, vis = plainMat(0x1a2224, { roughness: 0.08, metalness: 0.3 }), sway = (rnd() - 0.5) * 0.12;
+  f.cbox(B, PM.chrome, x, 2.02, 0, 0.36, 0.02, 0.02, 0.004);
+  f.cyl(B, o, x, 1.62, 0, 0.17, 0.15, 0.62, 12, sway);
+  f.sphere(B, o, x, 2.0, 0, 0.15, 1.2);
+  f.geo(B, vis, cachedGeo('suitVisor', () => new THREE.CircleGeometry(0.1, 16)), x, 2.0, 0.15, 0, -0.1);
+  for (const s of [-1, 1]) {
+    f.cyl(B, o, x + s * 0.2, 1.55, 0, 0.055, 0.05, 0.6, 8, sway, s * 0.12);
+    f.cyl(B, o, x + s * 0.08, 0.97, 0, 0.07, 0.065, 0.62, 8, sway * 0.5);
+    f.cyl(B, BM.rubber, x + s * 0.08, 0.62, 0.03, 0.065, 0.07, 0.12, 8);
+  }
+}
+function remains(B, f, rnd) {
+  // what is left of one of them: the uniform, a helmet, the boots - and very little else
+  const bone = plainMat(0xc8c0a8, { roughness: 0.6 });
+  f.cbox(B, BM.drab, 0, 0.12, 0.2, 0.5, 0.18, 0.4, 0.08, 0.2);
+  f.cbox(B, BM.drab, 0.4, 0.06, 0.45, 0.7, 0.1, 0.22, 0.05, 0.6);
+  f.sphere(B, plainMat(0x3a3e2a, { roughness: 0.5, metalness: 0.2 }), -0.35, 0.09, 0.55, 0.16, 0.55);
+  for (const [x, z, r] of [[0.75, 0.75, 0.3], [0.85, 0.5, -0.4]]) f.cbox(B, BM.rubber, x, 0.07, z, 0.12, 0.14, 0.28, 0.04, r);
+  for (let k = 0; k < 7; k++) f.cyl(B, bone, (rnd() - 0.5) * 1.2, 0.02, 0.3 + rnd() * 0.8, 0.012, 0.014, 0.18 + rnd() * 0.2, 6, Math.PI / 2, rnd() * 3);
+  f.sphere(B, bone, 0.2, 0.06, 0.95, 0.07, 1.1);
+  f.geo(B, decalMat('blood'), cachedGeo('remBlood', () => new THREE.PlaneGeometry(1.6, 1.6).rotateX(-Math.PI / 2)), 0.1, 0.009, 0.5, rnd() * 6);
+  f.geo(B, decalMat('drag'), cachedGeo('remDrag', () => new THREE.PlaneGeometry(0.9, 3.0).rotateX(-Math.PI / 2)), 0.3, 0.008, 2.1, 0.3);
+}
+function floorLine(B, a, pts, col = 0xc8a02a) {
+  const m = plainMat(col, { roughness: 0.6, transparent: true, opacity: 0.75, ws: { ao: 1, grime: 1, wet: 0 } });
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1], len = Math.hypot(x1 - x0, z1 - z0);
+    B.add(m, cachedGeo('fl' + len.toFixed(2), () => new THREE.PlaneGeometry(0.12, len).rotateX(-Math.PI / 2)), xform(a.offX + (x0 + x1) / 2, 0.007, a.offZ + (z0 + z1) / 2, Math.atan2(x1 - x0, z1 - z0)));
+  }
+}
+function bunkerSign(B, f, text, y, w = 1.4, opts = {}) {
+  const h = w / 6.4;
+  f.cbox(B, opts.plate || plainMat(0x1c2420, { roughness: 0.5 }), 0, y, 0.012, w + 0.04, h + 0.04, 0.02, 0.004);
+  f.geo(B, labelMat(text, { bg: opts.bg || '#1c2420', fg: opts.fg || '#d8d4c0', w: 1024, h: 160, size: 92 }), planeGeo(w, h), 0, y, 0.024);
+}
+Object.assign(SET_PIECES, {
+  bunker(L, B, a, ai, r) {
+    buildLiftCar(L, B);
+    const ceil = a.ceil;
+    // A-1, stencilled across the end wall in letters a metre high; the way on signed over the door
+    areaFrame(a, 32.98, 10.0, -Math.PI / 2).geo(B, breachArt('stencil', 0), planeGeo(2.6, 1.3), 0, 1.95, 0);
+    bunkerSign(B, areaFrame(a, 32.98, 7.0, -Math.PI / 2), 'SECTOR 1  ·  DECONTAMINATION  →', 2.72, 1.9);
+    bunkerSign(B, areaFrame(a, 14.02, 3.6, Math.PI / 2), 'GUARD POST', 2.55, 1.0);
+    WALL_ITEMS.roster(B, areaFrame(a, 14.02, 3.6, Math.PI / 2), r);
+    WALL_ITEMS.shelterSign(B, areaFrame(a, 29.5, 11.98, Math.PI), r);
+    // the field telephone on the guard's desk, a helmet beside it
+    WALL_ITEMS.fieldPhone(B, areaFrame(a, 6.02, 3.2, Math.PI / 2), r);
+    const dk = areaFrame(a, 8.9, 2.4, 0);
+    dk.sphere(B, plainMat(0x3a3e2a, { roughness: 0.5, metalness: 0.2 }), 0.3, 0.84, 0.1, 0.14, 0.55);
+    dk.cbox(B, PM.paper, -0.25, 0.79, 0.05, 0.3, 0.01, 0.22, 0.002, 0.2);
+    // beacons either side of the lift; the painted line from the lift to the way on
+    for (const z of [10.3, 13.7]) beacon(B, areaFrame(a, 6.15, z, Math.PI / 2), 2.95);
+    floorLine(B, a, [[6.3, 11.5], [10.5, 11.5], [10.5, 9.5], [30.5, 9.5], [30.5, 7.0], [32.6, 7.0]]);
+    // one of them, by the south wall, and the marks above where it happened
+    remains(B, areaFrame(a, 11.5, 18.4, Math.PI), r);
+    WALL_ITEMS.highScratch(B, areaFrame(a, 11.5, 19.98, Math.PI), r);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 22.98, 16.5, -Math.PI / 2), () => 0.05);
+    WALL_ITEMS.cdPoster(B, areaFrame(a, 19.5, 2.02, 0), () => 0.1);
+    WALL_ITEMS.cdPoster(B, areaFrame(a, 25.5, 2.02, 0), () => 0.5);
+  },
+  decon(L, B, a, ai, r) {
+    const ceil = a.ceil;
+    // the showers down both walls of the second and third chambers
+    for (const x of [15.5, 17.5, 22.5, 24.5, 29.5, 31.5, 37.5, 39.5]) {
+      showerHead(B, areaFrame(a, x, 7.02, 0), ceil);
+      if (x !== 33.5 && x !== 34.5) showerHead(B, areaFrame(a, x, 12.98, Math.PI), ceil);
+    }
+    for (const x of [20.0, 35.0]) for (const z of [8.6, 11.4]) B.add(plainMat(0x101210, { roughness: 0.4, metalness: 0.5 }), cachedGeo('drain', () => new THREE.CircleGeometry(0.16, 16).rotateX(-Math.PI / 2)), xform(a.offX + x, 0.006, a.offZ + z, 0));
+    for (const x of [12.75, 14.25, 26.75, 28.25]) B.add(hazardMat(), cachedGeo('deconStripe', () => { const g = new THREE.PlaneGeometry(0.25, 5.8).rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i) * 6, uv.getX(i)); return g; }), xform(a.offX + x, 0.006, a.offZ + 10, 0));
+    // the procedure, posted where you come in; the chamber numbers over the curtains
+    areaFrame(a, 6.5, 7.02, 0).geo(B, breachArt('decon', 0), planeGeo(1.4, 1.0), 0, 1.65, 0.004);
+    bunkerSign(B, areaFrame(a, 12.98, 8.0, -Math.PI / 2), 'DECON 2', 2.6, 0.9);
+    bunkerSign(B, areaFrame(a, 26.98, 8.0, -Math.PI / 2), 'DECON 3', 2.6, 0.9);
+    bunkerSign(B, areaFrame(a, 42.98, 9.5, -Math.PI / 2), 'SECTOR 2  ·  BARRACKS  →', 2.65, 1.6);
+    // the suits, still on their rail
+    const sr = areaFrame(a, 20.0, 5.98, Math.PI);
+    for (const x of [-4.2, -3.2, -2.2, 1.2, 2.2, 3.2, 4.2]) hazmatSuit(B, frame(...sr.at(x, 0.3), sr.rot), 0, r);
+    // the pump room's mains, the boilers' flue
+    const pm = areaFrame(a, 7.0, 1.02, 0);
+    for (const [y, rad] of [[2.5, 0.14], [2.15, 0.1]]) pm.cyl(B, mat('rust'), 0, y, 0.25, rad, rad, 8.0, 14, 0, Math.PI / 2);
+    const bl = areaFrame(a, 34.5, 1.02, 0);
+    bl.cyl(B, mat('metal', { color: 0x5a5e5a }), 0, 2.3, 0.3, 0.2, 0.2, 11.0, 16, 0, Math.PI / 2);
+    // shower stalls along the south wall of the showers; the washers in the laundry
+    const st = areaFrame(a, 7.5, 18.98, Math.PI);
+    for (let k = -3; k <= 3; k++) { st.cbox(B, plainMat(0xc8ccc4, { roughness: 0.35 }), k * 1.2 + 0.6, 1.0, 0.55, 0.04, 2.0, 1.1, 0.01); if (k < 3) showerHead(B, frame(...st.at(k * 1.2 + 1.2, 0), st.rot), ceil); }
+    for (const z of [14.6, 16.0]) {
+      const wf = areaFrame(a, 25.98, z, -Math.PI / 2);
+      wf.cbox(B, plainMat(0xb8bcb4, { roughness: 0.4, metalness: 0.3 }), 0, 0.6, 0.38, 0.75, 1.2, 0.7, 0.03);
+      wf.cyl(B, plainMat(0x1a2024, { roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.8, ws: false }), 0, 0.65, 0.74, 0.22, 0.22, 0.02, 20, Math.PI / 2);
+      wf.cyl(B, PM.chrome, 0, 0.65, 0.73, 0.25, 0.25, 0.02, 20, Math.PI / 2);
+      addCollider(L, a.offX + 25.6, a.offZ + z, 0.4);
+    }
+    // the medical bay: a red cross, the cabinet, a drip stand
+    WALL_ITEMS.firstaid(B, areaFrame(a, 36.0, 14.02, 0), r);
+    ivStand(B, areaFrame(a, 31.0, 17.2, 0.3)); addCollider(L, a.offX + 31.0, a.offZ + 17.2, 0.18);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 20.5, 12.98, Math.PI), () => 0.3);
+  },
+  barracks(L, B, a, ai, r) {
+    // helmets and kit on the bunks, photographs over them
+    for (const x of [3, 7, 11, 15, 19, 23, 27]) {
+      if (r() < 0.6) areaFrame(a, x + 0.5 + (r() - 0.5), 2.02, 0).geo(B, wardArt('drawing', Math.floor(r() * 4)), planeGeo(0.18, 0.13), 0, 1.75, 0.004, 0, 0, (r() - 0.5) * 0.3);
+      if (r() < 0.35) areaFrame(a, x + 0.5, 5.5, 0).sphere(B, plainMat(0x3a3e2a, { roughness: 0.5, metalness: 0.2 }), (r() - 0.5) * 1.2, 1.62, 0, 0.14, 0.55);
+    }
+    // the mess: the board with the menu nobody changed, and the days counted under it
+    const mb = areaFrame(a, 15.5, 24.98, Math.PI);
+    mb.cbox(B, mat('wood', { color: 0x5a4430 }), 0, 1.6, 0.02, 2.2, 1.2, 0.04, 0.01);
+    mb.geo(B, labelMat('MENU · DAY 4,018 · BEANS', { bg: '#1e2420', fg: '#d8d8cc', w: 1024, h: 128, size: 64, font: 'cursive' }), planeGeo(2.0, 0.25), 0, 1.95, 0.045);
+    mb.geo(B, artMat('tally', 1), planeGeo(1.8, 0.8), 0, 1.4, 0.045);
+    bunkerSign(B, areaFrame(a, 44.98, 12.5, -Math.PI / 2), 'SECTOR 3  ·  ARMOURY', 2.65, 1.4);
+    bunkerSign(B, areaFrame(a, 8.5, 11.02, 0), 'DORMITORY', 2.55, 1.0);
+    bunkerSign(B, areaFrame(a, 15.5, 13.98, Math.PI), 'MESS', 2.55, 0.8);
+    // the kitchen: pots on the range, the sacks, the tins
+    const kt = areaFrame(a, 38.5, 18.5, 0);
+    for (const x of [-2, -0.6, 0.9, 2.2]) { kt.cyl(B, plainMat(0x8a8c88, { roughness: 0.3, metalness: 0.8 }), x, 0.92, 0, 0.2, 0.18, 0.3, 16); if (r() < 0.5) kt.cyl(B, plainMat(0x8a8c88, { roughness: 0.3, metalness: 0.8 }), x, 1.08, 0, 0.21, 0.21, 0.02, 16); }
+    for (let k = 0; k < 5; k++) areaFrame(a, 34.2 + k * 0.5, 15.4, r()).cbox(B, BM.sandbag, 0, 0.25, 0, 0.42, 0.5, 0.3, 0.12);
+    // the officers' quarters: the commander's portrait, a flag, the radio on the desk
+    WALL_ITEMS.portrait(B, areaFrame(a, 42.0, 1.02, 0), () => 0.4);
+    const fl = areaFrame(a, 36.0, 1.02, 0);
+    fl.cbox(B, plainMat(0x2a3a5a, { roughness: 0.8 }), 0, 1.9, 0.02, 1.0, 0.6, 0.01, 0.003);
+    fl.cbox(B, plainMat(0xb8b0a0, { roughness: 0.8 }), 0, 1.9, 0.026, 1.0, 0.12, 0.006, 0.002);
+    const rd = areaFrame(a, 42.0, 3.0, 0); rd.cbox(B, plainMat(0x3a2e22, { roughness: 0.5 }), 0, 0.88, 0, 0.36, 0.2, 0.2, 0.02); rd.cyl(B, plainMat(0xc8b890, { roughness: 0.4 }), -0.08, 0.9, 0.105, 0.05, 0.05, 0.01, 14, Math.PI / 2);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 30.98, 8.0, -Math.PI / 2), () => 0.18);
+  },
+  command(L, B, a, ai, r) {
+    const ceil = a.ceil;
+    // the plotting table: the hemisphere under glass, the markers where it fell, a rail to lean on
+    const pt = areaFrame(a, 20.0, 13.0, 0), dk = plainMat(0x2a2620, { roughness: 0.5 });
+    pt.cbox(B, dk, 0, 0.45, 0, 7.8, 0.9, 3.8, 0.04);
+    pt.geo(B, breachArt('plot', 0), cachedGeo('plotTop', () => new THREE.PlaneGeometry(7.6, 3.6).rotateX(-Math.PI / 2)), 0, 0.905, 0);
+    pt.geo(B, plainMat(0xa8c8d8, { roughness: 0.05, transparent: true, opacity: 0.12, ws: false }), cachedGeo('plotGlass', () => new THREE.PlaneGeometry(7.6, 3.6).rotateX(-Math.PI / 2)), 0, 0.93, 0);
+    for (const z of [-1.95, 1.95]) pt.cbox(B, PM.chrome, 0, 0.98, z, 7.9, 0.04, 0.04, 0.01);
+    for (const x of [-3.95, 3.95]) pt.cbox(B, PM.chrome, x, 0.98, 0, 0.04, 0.04, 3.9, 0.01);
+    for (let k = 0; k < 18; k++) { const mx = (r() - 0.5) * 7, mz = (r() - 0.5) * 3.2; pt.cyl(B, plainMat(k % 3 ? 0xa81a12 : 0x1a3a7a, { roughness: 0.4 }), mx, 0.96, mz, 0.0, 0.05, 0.12, 6); }
+    for (let k = 0; k < 2; k++) pt.cbox(B, mat('wood', { color: 0x6a5240 }), -1 + k * 2.5, 0.97, 0.4, 1.2, 0.02, 0.05, 0.004, 0.3 + k);
+    // the clocks of four capitals, all stopped at once; the city map on the far wall
+    areaFrame(a, 19.5, 6.02, 0).geo(B, breachArt('clocks', 0), planeGeo(4.0, 1.0), 0, ceil - 0.65, 0.004);
+    const wm = areaFrame(a, 19.5, 20.98, Math.PI);
+    wm.cbox(B, mat('wood', { color: 0x4a3626 }), 0, 2.0, 0.02, 6.3, 2.5, 0.04, 0.01);
+    wm.geo(B, breachArt('wallmap', 0), planeGeo(6.0, 2.3), 0, 2.0, 0.045);
+    bunkerSign(B, areaFrame(a, 42.98, 13.0, -Math.PI / 2), 'SECTOR 5  ·  HATCH', 2.75, 1.4, { bg: '#5a1410', fg: '#f0e8d8', plate: plainMat(0x5a1410, { roughness: 0.5 }) });
+    bunkerSign(B, areaFrame(a, 13.5, 5.98, Math.PI), 'SIGNALS', 2.6, 0.9);
+    bunkerSign(B, areaFrame(a, 26.5, 5.98, Math.PI), 'CIPHER', 2.6, 0.9);
+    // the radio room: the big set, the headphones on the desk, the teletype and its paper all over the floor
+    const rr = areaFrame(a, 10.0, 1.02, 0);
+    rr.cbox(B, plainMat(0x3a3e36, { roughness: 0.45, metalness: 0.5 }), 0, 1.75, 0.25, 2.6, 0.9, 0.5, 0.02);
+    for (let k = 0; k < 10; k++) rr.cyl(B, plainMat(0x1a1a18, { roughness: 0.3 }), -1.1 + k * 0.24, 1.85, 0.51, 0.04, 0.04, 0.03, 12, Math.PI / 2);
+    for (let k = 0; k < 4; k++) rr.cyl(B, plainMat(0xd8d0b0, { roughness: 0.3 }), -0.9 + k * 0.6, 1.55, 0.51, 0.07, 0.07, 0.01, 16, Math.PI / 2);
+    const tt = areaFrame(a, 15.0, 2.0, 0.2); tt.cbox(B, plainMat(0x5a5a50, { roughness: 0.4, metalness: 0.4 }), 0, 0.5, 0, 0.6, 1.0, 0.5, 0.03);
+    for (let k = 0; k < 9; k++) B.add(decalMat('paper'), cachedGeo('decalPaper', () => new THREE.PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2)), xform(a.offX + 13.5 + r() * 4, 0.011 + k * 0.0003, a.offZ + 2 + r() * 2.5, r() * 6));
+    // the commander's desk: the red telephone
+    rotaryPhone(B, areaFrame(a, 30.0, 23.0, 0), 0.1, 0.78, 0.1, 0.4);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 32.98, 17.5, -Math.PI / 2), () => 0.6);
+  },
+  silo(L, B, a, ai, r) {
+    const ceil = a.ceil, top = a.liftH || 14;
+    // the platform: hazard edge, railings round it with a way on each side
+    const px0 = 19, px1 = 28, pz0 = 10, pz1 = 19, cx = (px0 + px1) / 2, cz = (pz0 + pz1) / 2;
+    for (const [x, z, w, d] of [[cx, pz0 + 0.12, 9, 0.24], [cx, pz1 - 0.12, 9, 0.24], [px0 + 0.12, cz, 0.24, 9], [px1 - 0.12, cz, 0.24, 9]]) B.add(hazardMat(), cachedGeo('platEdge' + w, () => { const g = new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * Math.max(w, d) * 2, uv.getY(i)); return g; }), xform(a.offX + x, 0.012, a.offZ + z, 0));
+    const rail = BM.steel;
+    const runRail = (x0, z0, x1, z1) => {
+      const len = Math.hypot(x1 - x0, z1 - z0), f = frame(a.offX + (x0 + x1) / 2, a.offZ + (z0 + z1) / 2, Math.atan2(z1 - z0, x1 - x0) * -1);
+      for (const y of [0.55, 1.1]) f.cyl(B, hazardMat(), 0, y, 0, 0.025, 0.025, len, 10, 0, Math.PI / 2);
+      for (let k = 0; k <= Math.round(len / 1.5); k++) f.cyl(B, rail, -len / 2 + k * len / Math.round(len / 1.5), 0.56, 0, 0.03, 0.03, 1.12, 10);
+    };
+    runRail(18.5, 9.5, 28.5, 9.5); runRail(18.5, 19.5, 28.5, 19.5);
+    runRail(18.5, 9.5, 18.5, 12.9); runRail(18.5, 16.1, 18.5, 19.5); runRail(28.5, 9.5, 28.5, 12.9); runRail(28.5, 16.1, 28.5, 19.5);
+    // the control booth: the screens and switches either side of the hatch control
+    bunkerSign(B, areaFrame(a, 23.5, 2.02, 0), 'SURFACE HATCH  ·  CYCLE 30 S', 2.7, 2.2, { bg: '#5a1410', fg: '#f0e8d8', plate: plainMat(0x5a1410, { roughness: 0.5 }) });
+    // a gantry round the shaft lip, high up, with a ladder down to the floor
+    const gm = BM.gunmetal;
+    for (const [x0, z0, x1, z1] of [[9.2, 3.0, 38.0, 3.0], [37.8, 3.0, 37.8, 26.8]]) {
+      const len = Math.hypot(x1 - x0, z1 - z0), f = frame(a.offX + (x0 + x1) / 2, a.offZ + (z0 + z1) / 2, x0 === x1 ? -Math.PI / 2 : 0);
+      f.cbox(B, mat('grate'), 0, 5.0, 0, len, 0.06, 1.6, 0.01);
+      f.cbox(B, gm, 0, 6.05, 0.78, len, 0.05, 0.05, 0.01); f.cbox(B, gm, 0, 5.5, 0.78, len, 0.04, 0.04, 0.01);
+      for (let k = 0; k <= Math.floor(len / 3); k++) { f.cbox(B, gm, -len / 2 + k * 3, 5.55, 0.78, 0.05, 1.1, 0.05, 0.01); f.cbox(B, gm, -len / 2 + k * 3, 4.8, -0.7, 0.08, 0.4, 0.08, 0.01, 0, 1, 0.8); }
+    }
+    const ld = areaFrame(a, 38.98, 6.0, -Math.PI / 2);
+    for (const s of [-0.25, 0.25]) ld.cbox(B, gm, s, 2.5, 0.2, 0.05, 5.0, 0.05, 0.01);
+    for (let y = 0.3; y < 5; y += 0.3) ld.cbox(B, gm, 0, y, 0.2, 0.5, 0.03, 0.03, 0.005);
+    // big stencils, the arrows in to the platform, sandbag rings, and what the garrison left at the end
+    areaFrame(a, 38.98, 18.0, -Math.PI / 2).geo(B, breachArt('stencil', 4), planeGeo(3.2, 1.6), 0, 2.4, 0);
+    floorLine(B, a, [[1.0, 14.5], [18.0, 14.5]]);
+    floorLine(B, a, [[23.5, 3.0], [23.5, 8.8]]);
+    remains(B, areaFrame(a, 30.5, 23.5, 0.5), r);
+    WALL_ITEMS.highScratch(B, areaFrame(a, 38.98, 23.0, -Math.PI / 2), r);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 9.02, 9.0, Math.PI / 2), () => 0.75);
+    WALL_ITEMS.graffiti(B, areaFrame(a, 9.02, 18.5, Math.PI / 2), () => 0.9);
+    // the shaft above the platform, up to the hatch: its lip, rungs up the wall, lamps
+    for (const [x0, z0, x1, z1, rot] of [[px0 + 0.5, pz0 + 0.5, px1 - 0.5, pz0 + 0.5, 0], [px0 + 0.5, pz1 - 0.5, px1 - 0.5, pz1 - 0.5, Math.PI]]) {
+      const f = frame(a.offX + (x0 + x1) / 2, a.offZ + (z0 + z1) / 2, rot);
+      f.cbox(B, hazardMat(), 0, ceil + 0.06, -0.48, x1 - x0 + 1, 0.12, 0.04, 0.005);
+    }
+    for (let y = ceil + 0.4; y < top - 0.5; y += 0.4) areaFrame(a, px1 - 0.98, cz, -Math.PI / 2).cbox(B, gm, 0, y, 0.12, 0.45, 0.03, 0.03, 0.005);
+    Breach.silo = { a, ai, cx: a.offX + cx, cz: a.offZ + cz, top };
+  },
+});
+
+// ---------- the hatch: the moving parts, and the platform's control ----------
+// Overhead, at the top of the shaft: a ring of concrete with a round steel door in it, two leaves on hinges at
+// the sides, eight locking dogs round the rim. While it cycles the beacons turn, the klaxon goes, the dogs draw
+// back one by one; then the leaves crack open and grey light comes down the shaft onto the platform.
+const Breach = { hatch: null, silo: null };
+function buildHatch() {
+  const S = Breach.silo; if (!S) return null;
+  const g = new THREE.Group(), y0 = S.top - 1.0, R0 = 3.55;
+  g.position.set(S.cx, 0, S.cz);
+  const conc = mat('concreteDark'), steel = mat('steel', { color: 0x6a6c66 }), dk = mat('steelDark');
+  const ring = new THREE.Mesh(new THREE.RingGeometry(R0, 6.5, 56, 1).rotateX(Math.PI / 2), conc); ring.position.y = y0 - 0.25; g.add(ring);
+  const ringTop = new THREE.Mesh(new THREE.RingGeometry(R0, 6.5, 56, 1).rotateX(-Math.PI / 2), conc); ringTop.position.y = y0 + 0.45; g.add(ringTop);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(R0, R0, 0.7, 56, 1, true), plainMat(0x4a4c48, { roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide })); rim.position.y = y0 + 0.1; g.add(rim);
+  const band = new THREE.Mesh(new THREE.RingGeometry(R0, R0 + 0.35, 56, 1).rotateX(Math.PI / 2), hazardMat()); band.position.y = y0 - 0.26; g.add(band);
+  // the sky, for when it opens: a grey disc above the leaves, glowing
+  const skyM = new THREE.MeshBasicMaterial({ color: 0x8a8a84 });
+  const sky = new THREE.Mesh(new THREE.CircleGeometry(R0 + 0.1, 48).rotateX(Math.PI / 2), skyM); sky.position.y = y0 + 0.62; g.add(sky);
+  const leaves = [];
+  for (const s of [-1, 1]) {
+    const hinge = new THREE.Group(); hinge.position.set(s * R0, y0, 0); g.add(hinge);
+    const leaf = new THREE.Group(); leaf.position.x = -s * R0; hinge.add(leaf);
+    const geo = new THREE.CylinderGeometry(R0 - 0.04, R0 - 0.04, 0.28, 40, 1, false, s > 0 ? 0 : Math.PI, Math.PI);
+    const plate = new THREE.Mesh(geo, steel); leaf.add(plate);
+    const under = new THREE.Mesh(new THREE.CircleGeometry(R0 - 0.3, 40, s > 0 ? -Math.PI / 2 : Math.PI / 2, Math.PI).rotateX(Math.PI / 2), hazardMat()); under.position.y = -0.145; leaf.add(under);
+    for (let k = -2; k <= 2; k++) { const rib = new THREE.Mesh(boxGeo(0.12, 0.16, Math.sqrt(Math.max(0.1, R0 * R0 - (k * 0.9) ** 2)) * 1.9), dk); rib.position.set(s * (0.6 + Math.abs(k) * 0.55), -0.22, 0); rib.position.x = s * (0.4 + (k + 2) * 0.65); rib.scale.z = Math.sqrt(Math.max(0.05, 1 - ((k + 2) * 0.65 + 0.4) ** 2 / (R0 * R0))); leaf.add(rib); }
+    if (s > 0) { const wheel = new THREE.Mesh(torusGeo(0.5, 0.06, 8, 28), dk); wheel.rotation.x = Math.PI / 2; wheel.position.set(0.7, -0.4, 0); leaf.add(wheel); for (let k = 0; k < 3; k++) { const sp = new THREE.Mesh(boxGeo(1.0, 0.05, 0.05), dk); sp.rotation.y = k * Math.PI / 3; sp.position.set(0.7, -0.4, 0); leaf.add(sp); } }
+    leaves.push(hinge);
+  }
+  const dogs = [];
+  for (let k = 0; k < 8; k++) {
+    const a = (k + 0.5) / 8 * Math.PI * 2, d = new THREE.Mesh(cboxGeo(0.7, 0.3, 0.32, 0.03), dk);
+    d.position.set(Math.cos(a) * (R0 - 0.1), y0 - 0.05, Math.sin(a) * (R0 - 0.1)); d.rotation.y = -a; g.add(d);
+    dogs.push({ m: d, a, out: 0 });
+  }
+  // the beacons at the four corners of the shaft lip
+  const beacons = [];
+  for (const [x, z] of [[-4.3, -4.3], [4.3, -4.3], [-4.3, 4.3], [4.3, 4.3]]) {
+    const b = new THREE.Group(); b.position.set(x, S.a.ceil + 0.25, z);
+    b.add(new THREE.Mesh(cylGeo(0.12, 0.14, 0.1, 14), dk));
+    const domeM = new THREE.MeshBasicMaterial({ color: 0x3a0604, transparent: true, opacity: 0.9 });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), domeM); dome.position.y = 0.05; b.add(dome);
+    const refl = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.14), new THREE.MeshBasicMaterial({ color: 0xff4020, side: THREE.DoubleSide })); refl.position.y = 0.1; b.add(refl);
+    g.add(b); beacons.push({ b, domeM, refl });
+  }
+  // a shaft of light, for when it opens
+  const shaftM = new THREE.MeshBasicMaterial({ color: 0x9a9a92, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 3.4, S.top - 1, 24, 1, true), shaftM); shaft.position.y = (S.top - 1) / 2; g.add(shaft);
+  World.areas[S.ai].group.add(g);
+  Breach.hatch = { g, leaves, dogs, beacons, sky, skyM, shaft, shaftM, open: 0, klaxT: 0, dogT: 0, y0 };
+  return Breach.hatch;
+}
+// every frame on A1: the hatch follows the cycle the host is running
+function updateBreachWorld(dt, t) {
+  const g = Game.g; if (!g || g.lv !== 'l3' || !Breach.silo) return;
+  const H = Breach.hatch || buildHatch(); if (!H) return;
+  const st = g.lift ? g.lift.st : 0, left = g.lift ? g.lift.t : 0, S = Breach.silo;
+  const cycling = st === 1, open = st >= 2;
+  // the dogs draw back, one every few seconds, as the clock runs down
+  const drawn = open ? 8 : cycling ? Math.floor(clamp((LIFT_WAIT - left) / LIFT_WAIT, 0, 1) * 8.99) : 0;
+  H.dogs.forEach((d, i) => {
+    const want = i < drawn ? 1 : 0;
+    if (want && !d.out && Game.mode === 'play') Sound.play('hatchBolt', { x: S.cx, y: H.y0, z: S.cz });
+    d.out = want; const k = damp(d.k || 0, want, 3, dt); d.k = k;
+    d.m.position.set(Math.cos(d.a) * (3.45 + k * 0.55), H.y0 - 0.05, Math.sin(d.a) * (3.45 + k * 0.55));
+  });
+  // the leaves: shut; a shudder as the last dog goes; cracked open, light coming down
+  H.open = damp(H.open, open ? 1 : 0, 0.8, dt);
+  const shud = cycling && left < 1.5 ? Math.sin(t * 40) * 0.004 : 0;
+  H.leaves.forEach((hg, i) => { hg.rotation.z = (i === 0 ? 1 : -1) * (H.open * 0.14 + shud); });
+  H.skyM.color.setScalar(0.25 + 0.4 * H.open);
+  H.shaftM.opacity = 0.05 * H.open;
+  // the beacons and the klaxon while it cycles
+  for (const b of H.beacons) { b.refl.rotation.y = t * 6; b.domeM.color.setHex(cycling ? (Math.sin(t * 6) > 0 ? 0xff3018 : 0x8a1008) : 0x2a0604); b.refl.visible = cycling; }
+  if (cycling) {
+    H.klaxT -= dt;
+    if (H.klaxT <= 0) { H.klaxT = 2.6; Sound.play('klaxon', { x: S.cx, y: 6, z: S.cz }); }
+    R.backlight.color.setHex(0xff2010); R.backlight.distance = 22;
+    R.backlight.position.set(S.cx + Math.cos(t * 3) * 3, S.a.ceil - 0.5, S.cz + Math.sin(t * 3) * 3);
+    R.backlight.intensity = 30 * Math.pow(0.5 + 0.5 * Math.sin(t * 6), 2);
+  } else if (Game.mode === 'play' && Cinema.mode !== 'ending') R.backlight.intensity = 0;
+  // a work lamp on the shaft lip throws its light up onto the underside of the hatch while it is shut
+  const here = Game.me && areaAt(Game.L, Game.me.x, Game.me.z) === S.ai;
+  if (!open && here && Game.mode === 'play' && Cinema.mode !== 'ending') {
+    R.key.color.setHex(0xffd8a8); R.key.angle = 0.9; R.key.penumbra = 0.7; R.key.distance = 12;
+    R.key.position.set(S.cx + 4.0, S.a.ceil + 0.3, S.cz + 4.0); R.key.target.position.set(S.cx, S.top, S.cz);
+    R.key.intensity = 70;
+  }
+  // the daylight, down the shaft, once it is open
+  if (open && Game.mode === 'play' && Cinema.mode !== 'ending') {
+    R.key.color.setHex(0xc8ccd0); R.key.angle = 0.5; R.key.penumbra = 0.9; R.key.distance = 26;
+    R.key.position.set(S.cx, S.top - 0.8, S.cz); R.key.target.position.set(S.cx, 0, S.cz);
+    R.key.intensity = 160 * H.open;
+  }
+}
+// the platform's control: a console with a guarded red button and the key still in it
+THEMES.silo.callButton = (g, D) => {
+  const body = new THREE.Mesh(cboxGeo(0.9, 1.1, 0.5, 0.03), mat('metal', { color: 0x5a5e58 })); body.position.set(0, 0.55, 0.25); g.add(body);
+  const top = new THREE.Mesh(cboxGeo(0.9, 0.06, 0.55, 0.02), mat('steelDark')); top.position.set(0, 1.12, 0.27); top.rotation.x = 0.3; g.add(top);
+  const btn = new THREE.Mesh(cylGeo(0.07, 0.08, 0.06, 18), new THREE.MeshBasicMaterial({ color: 0xffb02e })); btn.position.set(0, 1.19, 0.3); btn.rotation.x = 0.3; g.add(btn); D.button = btn;
+  const guard = new THREE.Mesh(cboxGeo(0.2, 0.02, 0.2, 0.004), plainMat(0xa8c0c8, { roughness: 0.1, transparent: true, opacity: 0.45, ws: false })); guard.position.set(0, 1.28, 0.2); guard.rotation.x = -0.9; g.add(guard);
+  const key = new THREE.Mesh(cboxGeo(0.02, 0.06, 0.02, 0.004), plainMat(0xb8a878, { roughness: 0.3, metalness: 0.9 })); key.position.set(0.28, 1.2, 0.33); key.rotation.x = 0.3; g.add(key);
+  for (let k = 0; k < 3; k++) { const gg = new THREE.Mesh(cylGeo(0.05, 0.05, 0.02, 14), plainMat(0xd8d0b0, { roughness: 0.4 })); gg.rotation.x = Math.PI / 2 + 0.3; gg.position.set(-0.3 + k * 0.12, 1.17, 0.36); g.add(gg); }
+  const lbl = new THREE.Mesh(planeGeo(0.5, 0.08), labelMat('HATCH CYCLE', { bg: '#5a1410', fg: '#f0e8d8', w: 256, h: 48, size: 30 })); lbl.position.set(0, 0.9, 0.505); g.add(lbl);
+};
 // ================= game state and the host's simulation =================
 const REACH_MAX = 5.6;          // how far into a room the arm can get: most shelters no longer have a safe corner
 const GRAB_DIST = 1.9;
@@ -12842,6 +14364,7 @@ function startNewRound() {
   Game.g.mp = typeof Settings !== 'undefined' ? Settings.map : 'l1';
   Game.g.lv = Game.levelKey || 'l1';
   if (Game.g.lv === 'l2') seizeNewRound(Game.g);
+  if (Game.g.lv === 'l3') { seizeCodes(Game.g); paleNewRound(Game.g); }
   Game.sim = { state: 'dormant', timer: INTRO_SECONDS + 75, path: null, pathT: 0, goal: null, lastSeen: null, lost: 0, seeT: {}, reachSafe: null, reachT: 0, ext: 0, cool: {}, area: 0,
     holds: {}, insideT: 0, x: 0, z: 0, yaw: 0, speed: 0, wanderT: 0, eatT: 0, victim: null, scream: 0, spawnFor: -1,
     born: false, travelT: 0, probe: null };
@@ -12887,6 +14410,7 @@ function hostTick(dt) {
   tickLevers(g);
   updateLift(g, living, dt);
   if (g.lv === 'l2') chudTick(g, living, players, dt, open);
+  else if (g.lv === 'l3') paleTick(g, living, players, dt, open);
   else creatureTick(g, living, dt, open);
 }
 
@@ -14134,6 +15658,7 @@ function findInteractable(g) {
       if (d.type === 'v') return st.on ? { ok: false, label: 'Valve open' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to turn the valve', progress: st.p };
       if (d.type === 'Q') return st.on ? { ok: false, label: 'Override done' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to override the blast door', progress: st.p };
       if (d.type === 'W') return st.on ? { ok: false, label: 'Power on' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to throw the main switch', progress: st.p };
+      if (d.type === 'u' && g.lv === 'l3') return g.lift.st === 0 ? { action: 'call', id: d.id, ok: true, label: 'Cycle the hatch' } : { ok: false, label: g.lift.st === 1 ? 'Hatch opening in ' + Math.ceil(g.lift.t) + 's' : 'The hatch is open' };
       if (d.type === 'u') return g.lift.st === 0 ? { action: 'call', id: d.id, ok: true, label: 'Call the freight lift' } : { ok: false, label: g.lift.st === 1 ? 'Lift arriving in ' + Math.ceil(g.lift.t) + 's' : 'Lift is here' };
       return null;
     });
@@ -14169,6 +15694,8 @@ function processGameEvents() {
       case 'chudSaw': if (ev.who === myId) { Sound.play('sting'); R.fearKick = 1; showToast('It saw your light', 'danger', 1800); } break;
       case 'chudBang': Sound.chudStep({ x: ev.x, y: 0.5, z: ev.z }, 1.3, 0); Sound.chudGrunt({ x: ev.x, y: 2.2, z: ev.z }, true); break;
       case 'chudGrab': Sound.play('grab', pos); Sound.chudGrunt(pos, true); if (ev.who !== myId) showToast(who + ' was taken', 'danger', 2600); break;
+      case 'paleSaw': if (ev.who === myId) { Sound.play('sting'); R.fearKick = 1; showToast('It saw you move. Freeze - or run', 'danger', 2000); } break;
+      case 'paleGrab': Sound.play('grab', pos); if (ev.who !== myId) showToast(who + ' was taken', 'danger', 2600); break;
       case 'drop': Sound.play('clunk', pos); break;
       case 'whistle': if (ev.who !== myId) Sound.play('whistle', { x: ev.x, y: 1.6, z: ev.z }); break;
       case 'fuse': Sound.play('fuse', pos); break;
@@ -14184,8 +15711,8 @@ function processGameEvents() {
         else { Sound.play('power', pos); Sound.play('alarm', pos); showToast('The generator is running. Everything down here heard that.', 'danger', 4200); R.shake = 0.6; }
         break;
       case 'strain': Sound.play('creak', pos); Sound.play('clunk', pos); break;
-      case 'liftCalled': Sound.play('alarm', pos); showToast(g.lv === 'l2' ? 'Lift called. Thirty seconds. It has seen the lights come on.' : 'Lift called. Thirty seconds. Stay alive.', 'danger', 3600); break;
-      case 'liftArrived': Sound.play('liftArrive', pos); showToast('The lift is here. Everyone in!', 'good', 3600); break;
+      case 'liftCalled': Sound.play(g.lv === 'l3' ? 'klaxon' : 'alarm', pos); showToast(g.lv === 'l3' ? 'Hatch cycling. Thirty seconds. The klaxon is bringing it.' : g.lv === 'l2' ? 'Lift called. Thirty seconds. It has seen the lights come on.' : 'Lift called. Thirty seconds. Stay alive.', 'danger', 3600); break;
+      case 'liftArrived': if (g.lv === 'l3') { Sound.play('hatchOpen', pos); showToast('The hatch is open. Everyone onto the platform!', 'good', 3600); } else { Sound.play('liftArrive', pos); showToast('The lift is here. Everyone in!', 'good', 3600); } break;
       case 'open': {
         const lt = ev.type === 'open' ? (Game.L.locks[ev.lock] || {}).type : '';
         if (lt === 'B') { Sound.play('snap', pos); Sound.play('boardsFall', pos); } else if (lt === 'K') { Sound.play('beep', pos); Sound.play('door', pos); } else Sound.play('door', pos);
@@ -14295,7 +15822,7 @@ function updateMates(dt, t) {
     const kl = g.kl, beastKill = m.dead && kl && kl.c && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < beastKillLen(kl);
     const killing = beastKill || (m.dead && kl && !kl.c && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
     const corpse = m.dead && !killing ? Game.corpses.get(p.id) : null;
-    m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser)) && (!m.dead || !!killing || !!corpse);
+    m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser && !Cinema.surface)) && (!m.dead || !!killing || !!corpse);
     if (killing) poseBody(m.h, beastKill ? beastKillBody(kl, Game.gt - kl.t) : KS, t, p.id.length);
     else if (corpse) poseBody(m.h, corpse, t, p.id.length);
     else {
@@ -14402,7 +15929,13 @@ function updateHud(dt) {
   $('stamina').style.opacity = st < 0.98 && !me.dead ? '1' : '0';
   $('stamina-fill').style.width = (st * 100).toFixed(1) + '%';
   // noise meter - or, on B5, where sound means nothing to it, whether you are showing a light
-  if (g.lv === 'l2') {
+  if (g.lv === 'l3') {
+    // on A1 the only thing that matters is whether you are moving
+    const th = paleThreat(), mv = clamp(me.speed / SPRINT_SPEED, 0, 1), moving = me.speed > 0.25;
+    $('noise').style.setProperty('--n', (moving ? 0.25 + mv * 0.75 : 0.03).toFixed(3));
+    setText($('noise-label'), !moving ? 'Still' : th > 0.2 ? 'Moving - it can see you' : me.speed > WALK_SPEED + 0.2 ? 'Running' : me.speed < CROUCH_SPEED + 0.1 ? 'Creeping' : 'Moving');
+    $('noise').classList.toggle('loud', moving && th > 0.15);
+  } else if (g.lv === 'l2') {
     const th = chudThreat();
     $('noise').style.setProperty('--n', (me.fl ? 0.75 + th * 0.25 : 0.05).toFixed(3));
     setText($('noise-label'), me.fl ? (th > 0.2 ? 'Light on - it can see it' : 'Light on') : 'Dark');
@@ -14930,6 +16463,7 @@ function teaserShading(on) {
 // ---------- the ending itself ----------
 function startEnding() {
   if (Game.levelKey === 'l2') { startSeizeEnding(); return; }
+  if (Game.levelKey === 'l3') { startBreachEnding(); return; }
   Cinema.endKind = 'l1';
   Cinema.mode = 'ending';
   setMode('end');
@@ -15013,13 +16547,14 @@ function endingLeave() {
   if (Chud.root) Chud.root.visible = false;
   Sound.chudBreath({ x: 0, y: 0, z: 0 }, false);
   R.key.intensity = 0; R.backlight.intensity = 0;
-  seizeEndingLeave();
+  seizeEndingLeave(); breachEndingLeave();
   Cinema.teaser = false; Cinema.zOpen = undefined;
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
 }
 const _ecLook = new THREE.Vector3();
 function updateEnding(dt, t) {
   if (Cinema.endKind === 'l2') { updateSeizeEnding(dt, t); return; }
+  if (Cinema.endKind === 'l3') { updateBreachEnding(dt, t); return; }
   // the Chud gets built a slice at a time while the doors are still shutting
   if (!Chud.ready) chudBuildStep(5, R.scene);
   Cinema.t += dt; runCues();
@@ -15156,6 +16691,12 @@ function endStats() {
   return { time: Math.max(0, Math.floor(end - start)), taken: g.kc || 0, team, camp: g.mp === 'camp' };
 }
 // ---------- results and credits ----------
+const LEVEL_END = {
+  l1: { n: 1, title: 'Reach - B4', made: 'into the lift', tail: 'It didn\'t stop at the bottom.' },
+  l2: { n: 2, title: 'Seize - B5', made: 'into the lift', tail: 'It went up.' },
+  l3: { n: 3, title: 'Breach - A1', made: 'up through the hatch', tail: 'There is nothing left up there. Nearly nothing.' },
+};
+const NEXT_LEVEL = { l1: 'l2', l2: 'l3' };
 function showEndScreen() {
   if (Cinema.mode !== 'ending' && Cinema.mode !== 'credits') return;
   endingLeave();
@@ -15165,15 +16706,17 @@ function showEndScreen() {
   R.whiteFlash = 0; R.fade = 1; R.fear = 0;
   const S = Cinema.stats || endStats();
   const nc = $('next-card'); nc.classList.remove('show', 'soon'); nc.hidden = true;
-  const two = Game.levelKey === 'l2', nA = Game.L ? Game.L.areas.length : 10;
-  setText($('end-kicker'), two ? 'Level 2 · Complete' : S.camp ? 'Campaign · Level 1 of 2 complete' : 'Level 1 · Complete');
-  setText($('end-title'), two ? 'Seize - B5' : 'Reach - B4');
+  const lv = LEVEL_END[Game.levelKey] ? Game.levelKey : 'l1', E = LEVEL_END[lv], nA = Game.L ? Game.L.areas.length : 10, next = NEXT_LEVEL[lv];
+  setText($('end-kicker'), S.camp ? 'Campaign · Level ' + E.n + ' of 3 complete' : 'Level ' + E.n + ' · Complete');
+  setText($('end-title'), E.title);
   const out = S.team.filter((m) => m.out).length, solo = S.team.length <= 1;
-  const tail = two ? 'It went up.' : 'It didn\'t stop at the bottom.';
-  setText($('end-sub'), (solo ? 'You made it into the lift. ' : out === S.team.length ? 'Your whole team made it into the lift. ' : 'Some of you made it into the lift. ') + tail);
-  const next = two ? 'Breach - A1' : 'Seize - B5', open = two || Settings.early;
-  setText($('end-next-name'), next); setText($('end-next-note'), open ? 'Early access' : 'Coming soon');
-  setText($('cr-next'), next + ' · ' + (open ? 'Early access' : 'Coming soon'));
+  setText($('end-sub'), (solo ? 'You made it ' + E.made + '. ' : out === S.team.length ? 'Your whole team made it ' + E.made + '. ' : 'Some of you made it ' + E.made + '. ') + E.tail);
+  const open = !!next && !!Settings.early, nextName = next ? LEVELS[next].title : 'Level 4';
+  setText($('end-next-name'), nextName); setText($('end-next-note'), open ? 'Early access' : 'Coming soon');
+  setText($('cr-next'), nextName + ' · ' + (open ? 'Early access' : 'Coming soon'));
+  // the campaign goes straight on into the next level, if it is open to this player
+  Game.endNext = S.camp && open ? next : null;
+  setText($('btn-again'), Game.endNext ? 'Continue · ' + nextName : S.camp && lv !== 'l1' ? 'Start the campaign again' : 'Play again');
   const mm = Math.floor(S.time / 60), ss = String(S.time % 60).padStart(2, '0');
   const stats = [[mm + ':' + ss, 'Time'], [solo ? (out ? 'Yes' : 'No') : out + ' / ' + S.team.length, 'Made it out'], [String(S.taken), 'Times taken'], [nA + ' / ' + nA, 'Areas']];
   const box = $('end-stats'); box.textContent = '';
@@ -15188,7 +16731,7 @@ function showEndScreen() {
   }
   const canRestart = Net.mode === 'solo' || netIsHost();
   $('btn-again').hidden = !canRestart;
-  setText($('end-note'), S.camp ? 'The campaign carries on in Seize - B5 when it opens. ' + (canRestart ? '' : 'Waiting for the host.') : canRestart ? '' : 'Waiting for the host to start another run.');
+  setText($('end-note'), S.camp && next && !open ? 'The campaign carries on in ' + nextName + ' when it opens. ' + (canRestart ? '' : 'Waiting for the host.') : canRestart ? '' : 'Waiting for the host.');
   const end = $('end'); end.hidden = false; end.classList.remove('in'); void end.offsetWidth; end.classList.add('in');
   const roll = $('credits-roll'); roll.classList.remove('roll'); void roll.offsetWidth; roll.classList.add('roll');
   Sound.setTheme('title'); Sound.titleMusic(true);
@@ -15481,8 +17024,8 @@ function seizeEndingLeave() {
 function setNextCard(kick, a, b, note) {
   setText($('nc-kick'), kick);
   const h = $('nc-title'); h.textContent = '';
-  const dash = document.createElement('span'); dash.className = 'nc-dash'; dash.textContent = ' - ';
-  h.append(document.createTextNode(a), dash, document.createTextNode(b));
+  if (b) { const dash = document.createElement('span'); dash.className = 'nc-dash'; dash.textContent = ' - '; h.append(document.createTextNode(a), dash, document.createTextNode(b)); }
+  else h.append(document.createTextNode(a));
   setText($('nc-note'), note);
   $('next-card').hidden = true; $('next-card').className = 'fullscreen';
 }
@@ -15814,10 +17357,548 @@ function updateKill(dt) {
   if (crossed(KILL_DRAG + KILL_TOSS[1])) { Sound.play('bump', pos); Sound.play('crack', pos); if (mine) R.shake = Math.max(R.shake, 1.4); }
   if (crossed(KILL_DRAG + KILL_TOSS[1] + 0.15)) Sound.scream({ x: C.headPos.x, y: C.headPos.y, z: C.headPos.z });
 }
+// ================= the end of Breach - A1: the surface =================
+// The platform goes up the shaft into grey light with the hatch leaves standing open above it - and the Pale
+// comes over the edge of it, onto the deck with you, as it rises. Through the hatch: white. Then the world
+// above, after: a dead city as far as you can see, ash coming down, not a light anywhere, and nothing moving -
+// except, far off in the haze, something that stands taller than the towers. The Pale gets up behind you. It
+// comes for you. And a hand the size of a building comes down out of the cloud and closes round it, and takes
+// it up, and the cloud closes behind it. You never see what the hand belongs to.
+
+const BR_T = {
+  leaves: 0.2, rise: 0.8, pale: 0.9, jump: 3.1, land: 3.65, stand: 4.4, creep: 5.1, white: 6.5, surface: 7.3, look: 8.4, radio: 10.4, boom: 11.8,
+  shriek: 14.2, charge: 15.0, shadow: 15.9, stop: 16.3, hand: 16.4, grab: 18.6, lift: 19.3, gone: 21.9, call: 22.6, black: 25.8, card: 26.4, soon: 27.4, screen: 31.2,
+};
+const BR_RISE = 12.6;
+const SURF = { ox: -700, oz: 700, group: null, ash: null, sky: null, legs: null, blood: null, built: false };
+
+// ---------- what is up there ----------
+// The colossus: only a hand and an arm, which is all of it anyone will ever see. Meshed like the others, at a
+// coarse scale, and drawn three and a half times over.
+const C_ASH = [0.3, 0.29, 0.28], C_ASHD = [0.22, 0.21, 0.2];
+const COL_FINGERS = [['i', -0.42, -1.5, 0.95], ['m', -0.14, -1.56, 1.05], ['r', 0.14, -1.54, 1.0], ['p', 0.4, -1.46, 0.82]];
+const colLen = (s) => [0.6 * s, 0.48 * s, 0.38 * s];
+const COLOSSUS_DEF = {
+  name: 'colossus', skin: C_ASH, weightLam: 0.08,
+  bones: [
+    ['wrist', null, [0, 0, 0]], ['palm', 'wrist', [0, -0.2, 0.0]],
+    ...COL_FINGERS.flatMap(([n, x, yb, s]) => { const [a, b] = colLen(s); return [[n + '1', 'palm', [x, yb, 0.05]], [n + '2', n + '1', [x, yb - a, 0.05]], [n + '3', n + '2', [x, yb - a - b, 0.05]]]; }),
+    ['t1', 'palm', [-0.5, -0.65, 0.12]], ['t2', 't1', [-0.72, -1.0, 0.3]], ['t3', 't2', [-0.82, -1.3, 0.44]],
+  ],
+  shapes: [
+    { c: [0, 0.1, -0.02, 0, 3.6, -0.3, 0.44, 0.6], bone: 'wrist', k: 0.15 },
+    { e: [0.12, 1.9, 0.12, 0.32, 0.9, 0.36], bone: 'wrist', k: 0.15 },
+    { e: [-0.18, 2.4, 0.0, 0.3, 0.8, 0.34], bone: 'wrist', k: 0.15 },
+    { e: [0.34, 0.0, -0.05, 0.12, 0.13, 0.12], bone: 'wrist', k: 0.08 },
+    { e: [-0.34, 0.02, -0.05, 0.12, 0.12, 0.12], bone: 'wrist', k: 0.08 },
+    { e: [0, -0.9, 0.02, 0.56, 0.72, 0.22], bone: 'palm', k: 0.12 },
+    { e: [0.05, -0.38, 0.1, 0.42, 0.28, 0.2], bone: 'palm', k: 0.1 },
+    { e: [-0.36, -0.75, 0.14, 0.22, 0.35, 0.2], bone: 'palm', k: 0.1 },
+    { e: [0.38, -0.85, 0.1, 0.18, 0.4, 0.18], bone: 'palm', k: 0.1 },
+    ...COL_FINGERS.flatMap(([n, x, yb, s]) => {
+      const [a, b, c] = colLen(s);
+      return [
+        { c: [x * 0.55, -0.4, -0.15, x, yb + 0.05, -0.1, 0.05, 0.045], bone: 'palm', k: 0.05, tint: C_ASHD },
+        { e: [x, yb + 0.02, -0.06, 0.13 * s, 0.12, 0.13], bone: 'palm', k: 0.06 },
+        { c: [x, yb, 0.05, x, yb - a, 0.05, 0.13 * s, 0.115 * s], bone: n + '1', k: 0.05 },
+        { e: [x, yb - a, 0.02, 0.12 * s, 0.11, 0.12 * s], bone: n + '2', k: 0.04, tint: C_ASHD },
+        { c: [x, yb - a, 0.05, x, yb - a - b, 0.05, 0.115 * s, 0.1 * s], bone: n + '2', k: 0.045 },
+        { e: [x, yb - a - b, 0.03, 0.105 * s, 0.1, 0.105 * s], bone: n + '3', k: 0.04, tint: C_ASHD },
+        { c: [x, yb - a - b, 0.05, x, yb - a - b - c, 0.08, 0.1 * s, 0.075 * s], bone: n + '3', k: 0.04 },
+      ];
+    }),
+    { c: [-0.5, -0.65, 0.12, -0.72, -1.0, 0.3, 0.17, 0.14], bone: 't1', k: 0.06 },
+    { c: [-0.72, -1.0, 0.3, -0.82, -1.3, 0.44, 0.14, 0.12], bone: 't2', k: 0.05 },
+    { c: [-0.82, -1.3, 0.44, -0.86, -1.58, 0.52, 0.12, 0.085], bone: 't3', k: 0.045 },
+    // the palm's creases, cut in deep
+    { e: [0, -0.8, 0.24, 0.45, 0.025, 0.05], rot: [0, 0, 0.25], bone: 'palm', k: 0.02, sub: true, tint: C_ASHD },
+    { e: [0.1, -1.15, 0.22, 0.4, 0.025, 0.05], rot: [0, 0, -0.1], bone: 'palm', k: 0.02, sub: true, tint: C_ASHD },
+  ],
+  parts: [{ name: 'body', lo: [-1.25, -3.6, -0.75], hi: [1.0, 3.75, 0.95], h: 0.034, keep: () => true }],
+  skinMat: { rough: 0.85, coat: 0.05, coatRough: 0.8, sss: 0x1a1210, poreF: 40 },
+  skinGLSL: `
+    // grey as ash, cracked all over like a dry riverbed, the cracks deep and black
+    float cr = cRidge(vRest * 3.2 + vec3(2.0), 0.08), cr2 = cRidge(vRest * 7.5 + vec3(5.0, 1.0, 3.0), 0.06) * 0.6;
+    float crack = max(cr, cr2);
+    diffuseColor.rgb *= 0.75 + 0.3 * cF(vRest * 4.0);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.04, 0.035, 0.035), crack * 0.85);
+    bH += -crack * 0.6 + cF(vRest * 12.0) * 0.2;
+    bRough = mix(bRough, 0.95, crack);
+    float ash = smoothstep(0.55, 0.8, cN(vRest * 5.0 + vec3(0.0, 3.0, 0.0)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.5, 0.47), ash * 0.4);
+    // and, after, the Pale all over the inside of it
+    float gore = uGore * smoothstep(0.1, 0.3, vRest.z) * (1.0 - smoothstep(-0.3, 0.2, vRest.y)) * (0.5 + 0.5 * cN(vRest * 9.0));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.06, 0.01, 0.01), gore * 0.9);
+    bWet = max(bWet, gore * 0.8);`,
+  extras(B) {
+    // nails like slabs of slate, broken
+    const nail = plainMat(0x16130f, { roughness: 0.55 });
+    for (const [n, x, yb, s] of COL_FINGERS) {
+      const [a, b, c] = colLen(s);
+      const m = new THREE.Mesh(cboxGeo(0.15 * s, 0.2 * s, 0.03, 0.02), nail); m.rotation.x = -0.15;
+      beastAttach(B, n + '3', m, x, yb - a - b - c * 0.7, -0.03);
+    }
+    const tn = new THREE.Mesh(cboxGeo(0.15, 0.18, 0.03, 0.02), nail); tn.rotation.set(-0.5, 0.4, 0); beastAttach(B, 't3', tn, -0.88, -1.48, 0.47);
+  },
+};
+const Colossus = makeBeast(COLOSSUS_DEF);
+function colossusBuildStep(budgetMs, scene) { return beastBuildStep(Colossus, budgetMs, scene); }
+// how far its fingers have closed (0 open, 1 a fist), the thumb, the wrist
+function colossusPose(curl, thumb, wrist) {
+  const b = Colossus.bones; if (!b) return;
+  COL_FINGERS.forEach(([n], i) => { const spread = (1 - curl) * (i - 1.5) * 0.09; setLocalEuler(b[n + '1'], -curl * 1.15, 0, spread); setLocalEuler(b[n + '2'], -curl * 1.35, 0, 0); setLocalEuler(b[n + '3'], -curl * 1.05, 0, 0); });
+  setLocalEuler(b.t1, -thumb * 0.5, 0, thumb * 0.75); setLocalEuler(b.t2, -thumb * 0.6, 0, 0); setLocalEuler(b.t3, -thumb * 0.5, 0, 0);
+  setLocalEuler(b.palm, wrist, 0, 0);
+  Colossus.root.updateMatrixWorld(true);
+}
+
+// ---------- the city ----------
+function surfTex(kind, seed) {
+  return canvasTex(256, 256, (g, w, h) => {
+    const r = mulberry32(seed * 101 + kind.length);
+    if (kind === 'tower') {
+      // a tower's face: concrete bands and windows, nearly all of them black, some blown out, soot up from the bottom
+      const base = ['#5a5852', '#4a4c4c', '#6a645a', '#3e3c3a'][seed % 4];
+      g.fillStyle = base; g.fillRect(0, 0, w, h);
+      const cols = 4 + (seed % 3), rows = 6 + (seed % 2) * 2, cw = w / cols, rh = h / rows;
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const k = r();
+        g.fillStyle = k < 0.08 ? '#0a0908' : k < 0.12 ? 'rgba(40,38,34,1)' : seed % 2 ? '#141618' : '#1a1a1a';
+        g.fillRect(i * cw + cw * 0.14, j * rh + rh * 0.2, cw * 0.72, rh * 0.6);
+        if (k > 0.97) { g.fillStyle = 'rgba(120,60,20,0.6)'; g.fillRect(i * cw + cw * 0.2, j * rh + rh * 0.3, cw * 0.6, rh * 0.4); }
+      }
+      for (let i = 0; i < 12; i++) { const x = r() * w, gr = g.createLinearGradient(x, h, x, 0); gr.addColorStop(0, 'rgba(10,9,8,0.6)'); gr.addColorStop(1, 'rgba(10,9,8,0)'); g.fillStyle = gr; g.fillRect(x, h * (0.3 + r() * 0.5), 10 + r() * 30, h); }
+    } else if (kind === 'ground') {
+      g.fillStyle = '#5a5650'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 4000; i++) { const v = 60 + r() * 60; g.fillStyle = 'rgba(' + v + ',' + (v - 3) + ',' + (v - 8) + ',' + (0.2 + r() * 0.4) + ')'; g.fillRect(r() * w, r() * h, 1 + r() * 4, 1 + r() * 4); }
+      for (let i = 0; i < 40; i++) { g.fillStyle = 'rgba(160,156,148,' + r() * 0.2 + ')'; g.beginPath(); g.arc(r() * w, r() * h, 6 + r() * 30, 0, 6.28); g.fill(); }
+    } else if (kind === 'smoke') {
+      g.clearRect(0, 0, w, h);
+      for (let i = 0; i < 70; i++) { const y = r() * h, x = w / 2 + (r() - 0.5) * w * 0.4 * (1 - y / h * 0.6), rad = 18 + (1 - y / h) * 50 * r(); const gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, 'rgba(40,38,36,' + (0.14 + 0.12 * (y / h)) + ')'); gr.addColorStop(1, 'rgba(40,38,36,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+    } else if (kind === 'cloud') {
+      g.clearRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, rad = 10 + r() * 40; const gr = g.createRadialGradient(x, y, 0, x, y, rad); const v = 70 + r() * 30 | 0; gr.addColorStop(0, 'rgba(' + v + ',' + (v - 4) + ',' + (v - 8) + ',0.35)'); gr.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+    }
+  });
+}
+function buildSurfaceSet() {
+  if (SURF.group) return SURF;
+  const grp = new THREE.Group(), B = new Batch(), O = { x: SURF.ox, z: SURF.oz }, r = mulberry32(2026);
+  const M = (c, o = {}) => plainMat(c, Object.assign({ roughness: 0.9, ws: false }, o));
+  const conc = M(0x6a6660), concD = M(0x4a4844), rust = M(0x5a3a24, { roughness: 0.8, metalness: 0.3 }), soot = M(0x1e1c1a);
+  // the ground: ash over everything, out to the horizon
+  const gt = surfTex('ground', 1); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(320, 320);
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(2600, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: gt, roughness: 1, color: 0xa8a49c }));
+  ground.position.set(O.x, -0.02, O.z); ground.receiveShadow = true; grp.add(ground);
+  // the compound round the hatch: a cracked pad, the housing, sandbags, a fence that fell, a tower that fell, a truck
+  B.add(conc, boxGeo(44, 0.3, 44, 6), xform(O.x, -0.15, O.z));
+  for (let i = 0; i < 26; i++) B.add(decalMat('cracks'), cachedGeo('surfCrack', () => new THREE.PlaneGeometry(4, 4).rotateX(-Math.PI / 2)), xform(O.x + (r() - 0.5) * 40, 0.01 + i * 0.0003, O.z + (r() - 0.5) * 40, r() * 6));
+  for (const [x, z, w, d] of [[0, -6.2, 13, 1.2], [-6.2, 0, 1.2, 13], [6.2, 0, 1.2, 13]]) B.add(concD, cboxGeo(w, 1.1, d, 0.05, 4), xform(O.x + x, 0.55, O.z + z));
+  for (let k = 0; k < 40; k++) { const a = Math.PI / 2 + 0.7 + r() * (Math.PI * 2 - 1.4), rad = 9 + r() * 4; B.add(M(0x7a6a50), cboxGeo(0.6, 0.25, 0.4, 0.1), xform(O.x + Math.cos(a) * rad, 0.12 + (k % 3) * 0.22, O.z + Math.sin(a) * rad, -a)); }
+  for (let k = 0; k < 18; k++) { const x = -20 + k * 2.4, lean = k > 6 && k < 12 ? 1.2 : 0.1 * r(); B.add(rust, cylGeo(0.04, 0.04, 2.4, 6), xform(O.x + x, 1.1, O.z - 19 + Math.sin(k) * 0.3, 0, lean, 0)); }
+  const tw = frame(O.x + 15, O.z + 12, 0.7);
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) tw.cyl(B, rust, x * 1.6 + 2.5, 0.6, z, 0.08, 0.08, 7.0, 6, 0, 1.38);
+  tw.cbox(B, M(0x3a3632), 6.2, 0.6, 0, 2.6, 1.0, 2.6, 0.05, 0.3);
+  const tk = frame(O.x - 14, O.z + 8, 2.4);
+  tk.cbox(B, soot, 0, 1.3, 0, 6.5, 1.8, 2.4, 0.08); tk.cbox(B, soot, 3.6, 1.6, 0, 1.8, 2.4, 2.3, 0.08);
+  for (const x of [-2.2, 0.6, 3.6]) for (const z of [-1.2, 1.2]) tk.cyl(B, M(0x111111), x, 0.5, z, 0.5, 0.5, 0.35, 12, Math.PI / 2);
+  // dead trees
+  for (let k = 0; k < 14; k++) {
+    const a = r() * Math.PI * 2, rad = 24 + r() * 50, x = O.x + Math.cos(a) * rad, z = O.z + Math.sin(a) * rad, h = 4 + r() * 5, f = frame(x, z, r() * 6);
+    f.cyl(B, soot, 0, h / 2, 0, 0.12, 0.25, h, 6, (r() - 0.5) * 0.15, (r() - 0.5) * 0.15);
+    for (let j = 0; j < 4; j++) f.cyl(B, soot, (r() - 0.5) * 0.5, h * (0.5 + r() * 0.4), (r() - 0.5) * 0.5, 0.03, 0.07, 1.5 + r() * 1.5, 5, (r() - 0.5) * 2.2, (r() - 0.5) * 2.2);
+  }
+  // the road in to the city, the cars that never got out, an overpass that came down
+  B.add(M(0x2e2c2a), boxGeo(9, 0.05, 420, 8), xform(O.x + 6, 0.02, O.z - 230));
+  for (let k = 0; k < 34; k++) {
+    const z = O.z - 30 - r() * 380, x = O.x + 6 + (r() - 0.5) * 7, f = frame(x, z, (r() - 0.5) * 0.8 + (r() < 0.5 ? Math.PI : 0)), c = [0x3a2e26, 0x2a2a2c, 0x4a3a2a, 0x1e1c1a][k % 4];
+    f.cbox(B, M(c, { roughness: 0.7, metalness: 0.3 }), 0, 0.55, 0, 1.8, 0.7, 4.2, 0.15); f.cbox(B, M(c, { roughness: 0.7, metalness: 0.3 }), 0, 1.1, -0.2, 1.6, 0.5, 2.2, 0.15);
+  }
+  for (let k = 0; k < 9; k++) {
+    const x = O.x - 120 + k * 40, fall = k === 4 || k === 5;
+    B.add(concD, cboxGeo(40, 2.4, 14, 0.1, 6), xform(x, fall ? 6 : 14, O.z - 180, 0, 0, fall ? (k === 4 ? 0.32 : -0.35) : 0));
+    if (!fall || k === 5) B.add(concD, cboxGeo(3, 14, 3, 0.1, 6), xform(x - 20, 7, O.z - 180));
+  }
+  // the towers: thousands of windows and not a light in one of them; broken off, leaning, burnt out
+  const tmats = [0, 1, 2, 3].map((s) => { const t = surfTex('tower', s); t.wrapS = t.wrapT = THREE.RepeatWrapping; return new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, metalness: 0.05 }); });
+  for (let k = 0; k < 190; k++) {
+    const front = r() < 0.7, a = front ? -Math.PI / 2 + (r() - 0.5) * 2.4 : r() * Math.PI * 2, rad = front ? 170 + r() * 620 : 260 + r() * 700;
+    const x = O.x + Math.cos(a) * rad, z = O.z + Math.sin(a) * rad;
+    const down = Math.max(0, 1 - Math.hypot(x - O.x, z - (O.z - 480)) / 420);
+    const w = 18 + r() * 30, d = 18 + r() * 30, h = 30 + r() * 70 + down * (90 + r() * 110);
+    const m = tmats[k % 4], lean = r() < 0.14 ? (r() - 0.5) * 0.32 : 0, ry = r() * Math.PI;
+    const broken = r() < 0.4, hh = broken ? h * (0.55 + r() * 0.3) : h;
+    B.add(m, boxGeo(w, hh, d, 16), xform(x, hh / 2, z, ry, lean, lean * 0.6));
+    if (broken) {
+      // the top broken away: jagged stumps of floors and a slab hanging off
+      for (let j = 0; j < 3; j++) { const sw = w * (0.3 + r() * 0.4), sh = 4 + r() * 14; B.add(m, boxGeo(sw, sh, d * (0.3 + r() * 0.5), 16), xform(x + (r() - 0.5) * w * 0.5, hh + sh / 2 - 2, z + (r() - 0.5) * d * 0.4, ry, (r() - 0.5) * 0.3, (r() - 0.5) * 0.3)); }
+      B.add(concD, boxGeo(w * 0.8, 1.2, d * 0.5, 8), xform(x, hh - 6, z + d * 0.55, ry, 0.9, 0.1));
+    } else if (r() < 0.5) B.add(concD, boxGeo(w * 0.4, 6 + r() * 10, d * 0.4, 8), xform(x, hh + 4, z, ry));
+    // rubble heaped at its foot
+    if (r() < 0.5) B.add(M(0x3e3c38), cachedGeo('rubble', () => new THREE.ConeGeometry(1, 0.5, 7)), xform(x + w * 0.6, 3, z, r() * 6, 0, 0, w * 0.7, 10, d * 0.7));
+  }
+  B.build(grp, {});
+  // the sky: a low ceiling of grey-brown cloud, a sun like a coin behind it
+  const skyM = new THREE.ShaderMaterial({
+    uniforms: { sun: { value: new THREE.Vector3(-0.35, 0.18, -0.92).normalize() }, dim: { value: 1 } },
+    vertexShader: 'varying vec3 vD; void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 sun; uniform float dim; varying vec3 vD;
+      float h(vec3 p) { p = fract(p * 0.3183 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float n(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y), mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      void main() {
+        float y = vD.y;
+        vec3 hor = vec3(0.46, 0.4, 0.33), top = vec3(0.17, 0.16, 0.16);
+        vec3 c = mix(hor, top, smoothstep(-0.02, 0.45, y));
+        float cl = n(vD * 6.0) * 0.6 + n(vD * 15.0) * 0.4;
+        c *= 0.82 + 0.3 * cl;
+        float s = max(dot(vD, sun), 0.0);
+        c += vec3(0.55, 0.42, 0.28) * pow(s, 60.0) * 0.6 + vec3(0.3, 0.22, 0.14) * pow(s, 6.0) * 0.35;
+        c = mix(c, vec3(0.32, 0.3, 0.27), smoothstep(0.02, -0.08, y));
+        gl_FragColor = vec4(c * dim, 1.0);
+      }`,
+    side: THREE.BackSide, depthWrite: false, fog: false,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), skyM); sky.position.set(O.x, 0, O.z); sky.renderOrder = -1; sky.frustumCulled = false; grp.add(sky);
+  // the cloud deck the hand comes down through
+  const ct = surfTex('cloud', 3); ct.wrapS = ct.wrapT = THREE.RepeatWrapping; ct.repeat.set(6, 6);
+  const cloudM = new THREE.MeshBasicMaterial({ map: ct, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, color: 0x9a948a });
+  const cloud = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(Math.PI / 2), cloudM); cloud.position.set(O.x, 150, O.z); grp.add(cloud);
+  // smoke going straight up out of the city, a long way off
+  const st = surfTex('smoke', 5);
+  for (let k = 0; k < 7; k++) { const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthWrite: false, color: 0x6a6460 })); const a = -Math.PI / 2 + (r() - 0.5) * 2, rad = 400 + r() * 500; sm.position.set(O.x + Math.cos(a) * rad, 130, O.z + Math.sin(a) * rad); sm.scale.set(90, 280, 1); grp.add(sm); }
+  // far off in the haze: its legs. That is all.
+  const legM = new THREE.MeshStandardMaterial({ color: 0x1c1a18, roughness: 1 });
+  const legs = new THREE.Group(); legs.position.set(O.x + 520, 0, O.z - 900);
+  for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(9, 15, 230, 10), legM); l.position.set(s * 40, 115, 0); legs.add(l); }
+  grp.add(legs);
+  // ash, everywhere, all the time
+  const N = 2600, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 60; pos[i * 3 + 1] = Math.random() * 30; pos[i * 3 + 2] = (Math.random() - 0.5) * 60; }
+  const ag = new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const dot = canvasTex(32, 32, (g, w, h) => { const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+  const ash = new THREE.Points(ag, new THREE.PointsMaterial({ color: 0xc8c4bc, map: dot, size: 0.045, sizeAttenuation: true, transparent: true, opacity: 0.8, depthWrite: false }));
+  ash.frustumCulled = false; grp.add(ash);
+  // the black rain, after
+  const bpos = new Float32Array(400 * 3);
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.BufferAttribute(bpos, 3));
+  const blood = new THREE.Points(bg, new THREE.PointsMaterial({ color: 0x1a0303, map: dot, size: 0.22, sizeAttenuation: true, transparent: true, opacity: 0.95, depthWrite: false }));
+  blood.frustumCulled = false; blood.visible = false; grp.add(blood);
+  // the hatch on the surface: its leaves standing open, and the deck that comes up through it
+  const hm = M(0x3e403c, { roughness: 0.7, metalness: 0.4 });
+  const leafG = new THREE.CylinderGeometry(3.5, 3.5, 0.28, 32, 1, false, 0, Math.PI);
+  for (const s of [-1, 1]) { const lf = new THREE.Mesh(leafG, hm); lf.position.set(O.x + s * 3.55, 0.1, O.z); lf.rotation.set(0, s > 0 ? 0 : Math.PI, s * 2.95); lf.castShadow = true; grp.add(lf); }
+  const ringT = new THREE.Mesh(new THREE.RingGeometry(3.55, 5.2, 48).rotateX(-Math.PI / 2), M(0x4a4a46)); ringT.position.set(O.x, 0.02, O.z); grp.add(ringT);
+  const deck = breachDeck(); deck.position.set(O.x, 0, O.z); grp.add(deck);
+  grp.visible = false;
+  R.scene.add(grp);
+  const fd = new THREE.DataTexture(new Uint8Array([0, 20, 160, 255]), 1, 1, THREE.RGBAFormat); fd.needsUpdate = true;
+  Object.assign(SURF, { group: grp, sky, skyM, cloud, cloudM, legs, ash, blood, deck, field: fd, fieldXf: new THREE.Vector4(0, 0, 1, 1) });
+  return SURF;
+}
+// the platform's deck as a thing that moves: a grate floor, hazard edges, the rails
+function breachDeck() {
+  const g = new THREE.Group();
+  const gr = mat('grate'), st = BM.steel;
+  const floor = new THREE.Mesh(boxGeo(8.9, 0.2, 8.9, 2), gr); floor.position.y = -0.1; floor.receiveShadow = true; g.add(floor);
+  for (const [x, z, w, d] of [[0, -4.33, 8.9, 0.24], [0, 4.33, 8.9, 0.24], [-4.33, 0, 0.24, 8.9], [4.33, 0, 0.24, 8.9]]) { const e = new THREE.Mesh(planeGeo(w, d), hazardMat()); e.rotation.x = -Math.PI / 2; e.position.set(x, 0.006, z); g.add(e); }
+  for (const [x, z] of [[-4.3, -4.3], [4.3, -4.3], [-4.3, 4.3], [4.3, 4.3]]) { const p = new THREE.Mesh(cylGeo(0.05, 0.05, 1.1, 8), st); p.position.set(x, 0.55, z); g.add(p); }
+  return g;
+}
+
+// ---------- the ending itself ----------
+const _brV = new THREE.Vector3(), _brW = new THREE.Vector3(), _brOv = {};
+function startBreachEnding() {
+  Cinema.endKind = 'l3'; Cinema.mode = 'ending';
+  setMode('end'); setLetterbox(true);
+  $('end').hidden = true; setNextCard('Next', 'Level 4', null, 'Coming soon');
+  const S = Breach.silo, me = Game.me, L = Game.L;
+  Cinema.ca = S ? S.ai : L.areas.length - 1;
+  Cinema.t = 0; Cinema.kick = 0; Cinema.kickV = 0; Cinema.surface = false; Cinema.fov = 72;
+  Cinema.stats = endStats();
+  // where you stand on the deck, and which way you face
+  const onDeck = me && !me.dead && S && Math.abs(me.x - S.cx) < 4.4 && Math.abs(me.z - S.cz) < 4.4;
+  Cinema.brOff = onDeck ? { x: me.x - S.cx, z: me.z - S.cz } : { x: -1.5, z: 1.5 };
+  Cinema.endCam = { yaw: me ? me.yaw : 0, pitch: me ? me.pitch : 0 };
+  // the deck that rises, standing in for the platform's floor
+  const deck = Cinema.brDeck || (Cinema.brDeck = breachDeck());
+  deck.position.set(S.cx, 0, S.cz); deck.visible = true; if (!deck.parent) R.scene.add(deck);
+  // where the Pale comes from: wherever it was, at a run, to the edge of the deck away from you, and up
+  const away = Math.atan2(-Cinema.brOff.x, -Cinema.brOff.z), ex = S.cx + Math.sin(away) * 6.5, ez = S.cz + Math.cos(away) * 6.5;
+  Cinema.brPale = { x0: Pale.ready ? PS.x || ex + 6 : ex + 6, z0: Pale.ready ? PS.z || ez : ez, ex, ez, away };
+  if (Pale.ready) { Pale.snap = true; setPaleVisible(true); }
+  buildSurfaceSet();
+  if (!Colossus.ready) colossusBuildStep(40, R.scene);
+  Sound.setTheme('silo', { drone: 0.5, machine: 0.6 });
+  const top = { x: S.cx, y: 13, z: S.cz }, deckP = () => ({ x: S.cx, y: brRise(Cinema.t), z: S.cz });
+  const T = BR_T;
+  setCues([
+    [0.05, () => { Sound.play('clunk', deckP()); Sound.play('hatchOpen', top); R.shake = 0.9; Cinema.kickV = -1.2; }],
+    [T.rise, () => { Sound.play('brakes', deckP()); Sound.setTheme('silo', { drone: 0.5, machine: 1.1, wind: 0.8 }); }],
+    [T.pale, () => { Sound.play('paleShriek', { x: Cinema.brPale.x0, y: 2.6, z: Cinema.brPale.z0 }); }],
+    [T.jump, () => { Sound.play('paleShriek', { x: Cinema.brPale.ex, y: 2.6, z: Cinema.brPale.ez }); }],
+    [T.land, () => { Sound.play('thud', deckP()); Sound.play('ventHit', deckP()); R.shake = 1.4; R.hit = 1.2; Cinema.kickV = -2.2; }],
+    [T.stand, () => { Sound.play('paleClick', deckP()); }],
+    [T.creep, () => { Sound.play('paleClick', deckP()); }],
+    [T.white - 0.3, () => { Sound.play('hatchOpen', top); Sound.duck(0.9, 0.6, 2.0); }],
+    [T.white, () => { R.whiteFlash = 1; }],
+    [T.surface, () => brToSurface()],
+    [T.radio, () => { Sound.play('radio'); subtitle('...any station... this is... is anybody...', 3200); }],
+    [T.boom, () => { Sound.play('colossus', brSurf(0, 0, -600)); R.shake = Math.max(R.shake, 0.7); }],
+    [T.boom + 2.4, () => Sound.play('colossus', brSurf(300, 0, -800))],
+    [T.shriek, () => { Sound.play('paleShriek', brSurf(Cinema.brPS.x, 2.6, Cinema.brPS.z)); R.fearKick = 1; }],
+    [T.charge + 0.1, () => Sound.play('paleStep', brSurf(0, 0, 0))],
+    [T.shadow, () => { Sound.play('colossus', brSurf(0, 60, 0)); Sound.play('colossusCall', brSurf(0, 120, -40)); R.shake = 1.6; R.hit = 0.8; }],
+    [T.hand - 0.2, () => { Sound.setTheme('surface', { wind: 1.6, drone: 0.6 }); }],
+    [T.grab, () => { Sound.play('crush', brSurf(Cinema.brPS.x, 2, Cinema.brPS.z)); Sound.play('paleShriek', brSurf(Cinema.brPS.x, 2, Cinema.brPS.z)); R.shake = 2.2; R.hit = 2; Cinema.kickV = -2.6; Colossus.gore = 0; }],
+    [T.grab + 0.35, () => { Sound.play('crush', brSurf(Cinema.brPS.x, 3, Cinema.brPS.z)); Sound.play('neckSnap', brSurf(Cinema.brPS.x, 3, Cinema.brPS.z)); brBloodBurst(); }],
+    [T.lift + 0.6, () => Sound.play('squelch', brSurf(Cinema.brPS.x, 10, Cinema.brPS.z))],
+    [T.call, () => { Sound.play('colossusCall', brSurf(500, 100, -900)); Sound.setTheme('surface', { wind: 1.0, drone: 0.25 }); }],
+    [T.black, () => { R.fade = 1; }],
+    [T.card, () => { const c = $('next-card'); c.hidden = false; void c.offsetWidth; c.classList.add('show'); Sound.play('impact'); }],
+    [T.soon, () => $('next-card').classList.add('soon')],
+    [T.screen, () => showEndScreen()],
+  ]);
+  $('skip').hidden = false;
+}
+// the deck's height in the shaft
+function brRise(T) { return BR_RISE * smoothstep(BR_T.rise, BR_T.white + 0.6, T); }
+// a point on the surface, relative to the hatch
+function brSurf(x, y, z) { return { x: SURF.ox + x, y, z: SURF.oz + z }; }
+function brToSurface() {
+  Cinema.surface = true; Cinema.ca = -1;
+  SURF.group.visible = true;
+  if (World.group) World.group.visible = false;
+  if (Cinema.brDeck) Cinema.brDeck.visible = false;
+  if (Breach.hatch) Breach.hatch.g.visible = false;
+  if (!Colossus.ready) buildBeast(Colossus, R.scene);
+  Colossus.root.scale.setScalar(3.4); Colossus.root.visible = false;
+  Debris.free = true;
+  // the shading for the set: open sky, dry, dusty
+  if (!SURF.saved) { SURF.saved = { f: WS.field.value, xf: WS.fieldXf.value.clone() }; WS.field.value = SURF.field; WS.fieldXf.value.copy(SURF.fieldXf); }
+  for (let i = 0; i < WS.occPt.value.length; i++) WS.occPt.value[i].w = -1;
+  R.camera.far = 3200; R.camera.updateProjectionMatrix();
+  // the Pale, crouched at the far side of the deck, behind you
+  Cinema.brPS = { x: Cinema.brOff.x > 0 ? -1.6 : 1.6, z: 10.5 };
+  Sound.setTheme('surface');
+  try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled as it comes into view */ }
+}
+function brBloodBurst() {
+  const p = SURF.blood.geometry.attributes.position, hand = Colossus.root.position;
+  SURF.bloodV = [];
+  for (let i = 0; i < p.count; i++) { p.setXYZ(i, hand.x + (Math.random() - 0.5) * 3, hand.y - 2 + Math.random() * 3, hand.z + (Math.random() - 0.5) * 3); SURF.bloodV.push([(Math.random() - 0.5) * 6, -Math.random() * 2, (Math.random() - 0.5) * 6]); }
+  p.needsUpdate = true; SURF.blood.visible = true;
+}
+function updateBreachEnding(dt, t) {
+  Cinema.t += dt; runCues();
+  const T = Cinema.t, E = BR_T, S = Breach.silo, off = Cinema.brOff, kick = cineKick(dt);
+  const cam = R.camera;
+  if (!Colossus.ready) colossusBuildStep(6, R.scene);
+  if (!Cinema.surface) {
+    // ---- up the shaft ----
+    const rise = brRise(T), H = Breach.hatch;
+    if (H) { H.leaves.forEach((hg, i) => { hg.rotation.z = (i === 0 ? 1 : -1) * lerp(0.14, 1.75, smooth01((T - E.leaves) / 3.2)); }); H.skyM.color.setScalar(lerp(0.65, 1.6, smooth01(T / 6))); H.shaftM.opacity = lerp(0.05, 0.16, smooth01(T / 5)); for (const b of H.beacons) b.refl.visible = false; }
+    Cinema.brDeck.position.y = rise;
+    // daylight down the shaft, brighter the higher you go
+    R.key.color.setHex(0xd0d2d4); R.key.angle = 0.6; R.key.penumbra = 0.9; R.key.distance = 30;
+    R.key.position.set(S.cx, S.top + 2, S.cz); R.key.target.position.set(S.cx, rise, S.cz);
+    R.key.intensity = lerp(160, 900, smooth01(T / 6.5));
+    R.backlight.intensity = 0;
+    // you: on the deck, looking up at the open hatch, then round when it comes up over the edge
+    const P = Cinema.brPale, toPale = Math.atan2(-(P.ex - (S.cx + off.x)), -(P.ez - (S.cz + off.z)));
+    let yaw = lerpAngle(Cinema.endCam.yaw, Cinema.endCam.yaw + 0.3, smooth01(T / 3)), pitch = lerp(Cinema.endCam.pitch, 0.95, smooth01(T / 1.6));
+    const look = smooth01((T - E.jump + 0.2) / 0.45);
+    yaw = lerpAngle(yaw, toPale, look); pitch = lerp(pitch, 0.05, look);
+    const up = smooth01((T - E.creep - 0.7) / 0.6); pitch = lerp(pitch, 1.1, up);
+    pitch += kick * 0.4 + Math.sin(t * 1.3) * 0.01;
+    cam.position.set(S.cx + off.x, rise + EYE_H + kick * 0.6, S.cz + off.z);
+    cam.rotation.set(pitch, yaw, 0);
+    if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
+    if (T > E.rise && T < E.white) R.shake = Math.max(R.shake || 0, 0.18);
+    cineShake(dt, t);
+    if (World.viewModel) World.viewModel.group.visible = true;
+    setFlash(0.25); R.flashTarget.position.set(0.05, -0.5, -3);
+    // the Pale: across the floor flat out, a leap, onto the deck; up on its feet; coming at you
+    if (Pale.ready) {
+      const ov = _brOv; for (const k in ov) delete ov[k];
+      let x, z, y = 0, sp = 0, yawP = Math.atan2(P.ex - P.x0, P.ez - P.z0), mode = 'hunt';
+      if (T < E.jump) {
+        const k = smooth01((T - E.pale) / (E.jump - E.pale));
+        x = lerp(P.x0, P.ex, k); z = lerp(P.z0, P.ez, k); sp = Math.hypot(P.ex - P.x0, P.ez - P.z0) / (E.jump - E.pale);
+      } else if (T < E.land) {
+        const k = (T - E.jump) / (E.land - E.jump), lx = S.cx + Math.sin(P.away) * 3.9, lz = S.cz + Math.cos(P.away) * 3.9;
+        x = lerp(P.ex, lx, k); z = lerp(P.ez, lz, k); y = lerp(0, brRise(E.land), k) + Math.sin(k * Math.PI) * 2.2;
+        ov.drop = 0.3; ov.lean = 0.6; ov.still = true; sp = 0;
+      } else {
+        const lx = S.cx + Math.sin(P.away) * 3.9, lz = S.cz + Math.cos(P.away) * 3.9;
+        const ck = smooth01((T - E.creep) / 1.4);
+        x = lerp(lx, S.cx + Math.sin(P.away) * 2.4, ck); z = lerp(lz, S.cz + Math.cos(P.away) * 2.4, ck); y = rise;
+        yawP = Math.atan2(cam.position.x - x, cam.position.z - z);
+        const crouch = 1 - smooth01((T - E.stand) / 0.7);
+        ov.drop = 0.65 * crouch + 0.15; ov.lean = 0.85 * crouch + 0.25; sp = T > E.creep ? 0.8 : 0; mode = T > E.creep ? 'walk' : 'hunt';
+        ov.jaw = T > E.stand && T < E.stand + 0.8 ? 1.2 : 0.3; ov.headRoll = Math.sin(T * 1.1) * 0.4;
+      }
+      Object.assign(Pale, { x, z, y, yaw: yawP, speed: sp, mode, look: T > E.land ? cam.position : null, reach: 0, grip: undefined, ov });
+      setPaleVisible(true);
+      palePose(dt, t);
+      for (const ev of Pale.events) Sound.play('paleStep', { x: ev.x, y: y + 0.05, z: ev.z });
+      Pale.events.length = 0;
+    }
+    // everyone on the deck goes up with it
+    updateMates(dt, t);
+    for (const [, m] of Game.mates) if (m.h.root.visible && Math.abs(m.x - S.cx) < 4.6 && Math.abs(m.z - S.cz) < 4.6) m.h.root.position.y += rise;
+    updateLightPool(dt, cam, Cinema.ca);
+    R.fear = T > E.pale ? 0.8 : 0.3;
+    R.whiteFlash = T > E.white - 0.8 ? clamp((T - (E.white - 0.8)) / 0.8, 0, 1) : 0;
+    return;
+  }
+  // ---- the surface ----
+  const sk = clamp((T - E.surface) / 1.8, 0, 1);
+  R.whiteFlash = Math.max(0, 1 - sk * 1.1);
+  const dk = smooth01((T - E.shadow) / 0.6) * (1 - smooth01((T - E.gone) / 2.5));
+  // the light: overcast, flat, brown; dimmed when it is overhead
+  R.hemi.color.setHex(0xb8b0a0); R.hemi.groundColor.setHex(0x4a4640); R.hemi.intensity = lerp(1.15, 0.45, dk);
+  R.key.color.setHex(0xd8c8a8); R.key.angle = 1.2; R.key.penumbra = 1; R.key.distance = 0; R.key.position.set(SURF.ox - 400, 300, SURF.oz - 900); R.key.target.position.set(SURF.ox, 0, SURF.oz); R.key.intensity = lerp(2.5e6, 0.6e6, dk);
+  R.backlight.intensity = 0;
+  SURF.skyM.uniforms.dim.value = lerp(1, 0.55, dk);
+  R.scene.fog.color.setRGB(0.36 * (1 - dk * 0.4), 0.33 * (1 - dk * 0.4), 0.29 * (1 - dk * 0.4)); R.scene.fog.density = 0.0026 + dk * 0.0015; R.scene.background.copy(R.scene.fog.color);
+  SURF.cloudM.map.offset.x += dt * 0.004;
+  // the deck coming up out of the ground, locking flush
+  const dy = lerp(-3.2, 0, smooth01((T - E.surface) / 1.4));
+  SURF.deck.position.y = dy;
+  const eye = { x: SURF.ox + off.x, y: dy + EYE_H, z: SURF.oz + off.z };
+  // when it comes down, you go over backwards, onto the deck, and look up at it from there
+  const PS3 = Cinema.brPS, bx = SURF.ox + PS3.x, bz = SURF.oz + PS3.z;
+  const fall = smooth01((T - E.stop - 0.05) / 0.7) * (1 - smooth01((T - E.gone - 0.4) / 2.2));
+  { const dx = eye.x - bx, dz = eye.z - bz, dl = Math.hypot(dx, dz) || 1; eye.x += dx / dl * 1.4 * fall; eye.z += dz / dl * 1.4 * fall; eye.y -= 0.95 * fall; }
+  // where to look: up at the sky; down to the city, slowly across it; round at the Pale; up at what comes down; after it into the cloud; back to the city
+  const LK = (x, y, z) => [Math.atan2(-(x - eye.x), -(z - eye.z)), Math.atan2(y - eye.y, Math.max(0.3, Math.hypot(x - eye.x, z - eye.z)))];
+  const city0 = LK(SURF.ox + 300, 60, SURF.oz - 600), city1 = LK(SURF.ox - 260, 50, SURF.oz - 620), skyL = [city0[0] + 0.2, 0.9];
+  let A;
+  if (T < E.look) A = skyL;
+  else if (T < E.shriek) { const k = smooth01((T - E.look) / 1.4), p = smooth01((T - E.look - 1.2) / (E.shriek - E.look - 1.2)); A = [lerpAngle(lerpAngle(skyL[0], city0[0], k), city1[0], p), lerp(lerp(skyL[1], city0[1], k), city1[1], p)]; }
+  else {
+    const toP = LK(Pale.x, 2.0 + (Pale.y || 0), Pale.z), k = smooth01((T - E.shriek) / 0.5);
+    A = [lerpAngle(city1[0], toP[0], k), lerp(city1[1], toP[1], k)];
+    const hp = Colossus.root ? Colossus.root.position : null;
+    if (T > E.stop && hp) {
+      // frame the two of them: its head, and the palm coming down over it
+      const palmY = hp.y - 3.2, up = smooth01((T - E.stop) / 0.8);
+      const mid = LK(lerp(Pale.x, hp.x, 0.4), lerp(2.6 + (Pale.y || 0), Math.min(palmY, 40), 0.55), lerp(Pale.z, hp.z, 0.4));
+      A = [lerpAngle(A[0], mid[0], up), lerp(A[1], Math.min(1.25, mid[1]), up)];
+    }
+    if (T > E.lift && hp) { const toH = LK(hp.x, hp.y - 4, hp.z), k3 = smooth01((T - E.lift) / 0.8); A = [lerpAngle(A[0], toH[0], k3), lerp(A[1], Math.min(1.3, toH[1]), k3)]; }
+    if (T > E.gone - 0.6) { const k2 = smooth01((T - E.gone + 0.6) / 2.2); A = [lerpAngle(A[0], city0[0], k2), lerp(A[1], city0[1] + 0.02, k2)]; }
+  }
+  Cinema.brYaw = Cinema.brYaw === undefined ? A[0] : dampAngle(Cinema.brYaw, A[0], T > E.shriek && T < E.shriek + 0.6 ? 9 : 3, dt);
+  Cinema.brPitch = Cinema.brPitch === undefined ? A[1] : damp(Cinema.brPitch, A[1], 3, dt);
+  cam.position.set(eye.x, eye.y + kick * 0.6, eye.z);
+  cam.rotation.set(Cinema.brPitch + kick * 0.4 + Math.sin(t * 1.1) * 0.006, Cinema.brYaw + Math.sin(t * 0.7) * 0.008, 0);
+  const fov = T > E.hand && T < E.gone ? 84 : 66;
+  Cinema.fov = damp(Cinema.fov || 72, fov, 2, dt);
+  if (Math.abs(cam.fov - Cinema.fov) > 0.05) { cam.fov = Cinema.fov; cam.updateProjectionMatrix(); }
+  cineShake(dt, t);
+  if (World.viewModel) World.viewModel.group.visible = true;
+  setFlash(0); R.flashThrow = 1;
+  // the legs in the haze: one of them moves
+  SURF.legs.children[0].position.z = Math.sin(T * 0.08) * 40; SURF.legs.position.x = SURF.ox + 520 - T * 2;
+  // ash round you, drifting down and sideways on the wind; thicker when it comes down
+  const ap = SURF.ash.geometry.attributes.position;
+  SURF.ash.position.set(eye.x, 0, eye.z);
+  for (let i = 0; i < ap.count; i++) {
+    let x = ap.getX(i) + dt * (1.2 + dk * 6), y = ap.getY(i) - dt * (0.6 + dk * 1.5 + (i % 7) * 0.05), z = ap.getZ(i) + Math.sin(t + i) * dt * 0.3;
+    if (y < 0) y += 30; if (x > 30) x -= 60;
+    ap.setXYZ(i, x, y, z);
+  }
+  ap.needsUpdate = true;
+  // ---- the Pale behind you, and what comes for it ----
+  if (Pale.ready) brPaleAndHand(T, dt, t, eye);
+  if (SURF.blood.visible) {
+    const bp = SURF.blood.geometry.attributes.position;
+    for (let i = 0; i < bp.count; i++) { const v = SURF.bloodV[i]; v[1] -= 9.8 * dt; bp.setXYZ(i, bp.getX(i) + v[0] * dt, Math.max(0.02, bp.getY(i) + v[1] * dt), bp.getZ(i) + v[2] * dt); }
+    bp.needsUpdate = true;
+  }
+  R.fear = T > E.shriek && T < E.gone ? 0.85 : 0.2;
+  if (T >= E.black) R.fade = 1; else R.fade = damp(R.fade, 0, 4, dt);
+}
+const _brHand = new THREE.Vector3(), _brFist = new THREE.Vector3();
+function brPaleAndHand(T, dt, t, eye) {
+  const E = BR_T, P = Cinema.brPS, ov = _brOv; for (const k in ov) delete ov[k];
+  const base = brSurf(P.x, 0, P.z), toCam0 = Math.atan2(eye.x - base.x, eye.z - base.z);
+  // the spot it charges to, and stops dead on: four metres short of where you stood
+  const d0 = Math.hypot(eye.x - base.x, eye.z - base.z), dStop = Math.max(0, d0 - 4.2);
+  let x = base.x, z = base.z, y = 0, sp = 0, mode = 'idle', yaw = toCam0;
+  if (T < E.shriek) { ov.drop = 0.7; ov.lean = 1.05; ov.headRoll = 0.45; ov.still = true; }
+  else if (T < E.charge) { const k = smooth01((T - E.shriek) / 0.6); ov.drop = lerp(0.7, 0, k); ov.lean = lerp(1.05, 0.35, k); ov.jaw = 1.3; ov.headRoll = Math.sin(T * 3) * 0.3; ov.still = true; mode = 'hunt'; }
+  else if (T < E.stop) {
+    const k = smooth01((T - E.charge) / (E.stop - E.charge)), d = lerp(0, dStop, k);
+    x = base.x + Math.sin(toCam0) * d; z = base.z + Math.cos(toCam0) * d; sp = 4.6; mode = 'hunt'; ov.jaw = 0.9;
+  } else {
+    x = base.x + Math.sin(toCam0) * dStop; z = base.z + Math.cos(toCam0) * dStop; mode = 'hunt';
+    // it stops dead, and looks up
+    const lk = smooth01((T - E.stop) / 0.4);
+    ov.neckPitch = -0.9 * lk; ov.headPitch = -0.6 * lk; ov.lookFwd = true; ov.still = true; ov.lean = -0.1 * lk; ov.jaw = 0.5 * lk;
+  }
+  // the hand: down out of the cloud behind it, open, slowing as it comes; shut round it; up, and gone
+  const H = Colossus;
+  if (H.ready && T > E.hand - 0.1) {
+    H.root.visible = T < E.gone + 0.5;
+    const back = 1.6, tx = x - Math.sin(toCam0) * back, tz = z - Math.cos(toCam0) * back, ty = 2.6 + 8.2;
+    let hx = tx, hy = ty, hz = tz, curl = 0.04, thumb = 0.05, wrist = 0.35;
+    if (T < E.grab) {
+      const u = clamp((T - E.hand) / (E.grab - E.hand), 0, 1), k = 1 - Math.pow(1 - u, 3);
+      hx = lerp(x - Math.sin(toCam0) * 7, tx, k); hz = lerp(z - Math.cos(toCam0) * 7, tz, k); hy = lerp(160, ty, k);
+      wrist = lerp(0.6, 0.35, k);
+    } else {
+      const k = smooth01((T - E.grab) / 0.28), lk = smooth01((T - E.lift) / (E.gone - E.lift));
+      hy = ty + lk * lk * 175; hx = tx - Math.sin(toCam0) * lk * 20; hz = tz - Math.cos(toCam0) * lk * 20;
+      curl = lerp(0.04, 0.93, k); thumb = lerp(0.05, 1.0, k); wrist = lerp(0.35, 0.12, k);
+      H.gore = Math.min(1, H.gore + dt * 2);
+    }
+    H.root.position.set(hx, hy, hz);
+    H.root.rotation.set(0, toCam0 + Math.PI, 0);
+    colossusPose(curl + (T > E.grab + 0.3 && T < E.lift + 0.4 ? Math.sin(T * 20) * 0.03 : 0), thumb, wrist);
+    // the Pale, in its fist: lifted with it, thrashing, then still
+    if (T > E.grab) {
+      const pk = smooth01((T - E.grab) / 0.28);
+      H.bones.palm.localToWorld(_brV.set(0, -1.15, 0.45));
+      y = lerp(0, _brV.y - 2.0, pk); x = lerp(x, _brV.x, pk); z = lerp(z, _brV.z, pk);
+      const alive = 1 - smooth01((T - E.grab - 0.4) / 0.35);
+      ov.drop = 0; ov.lean = 0.2 * alive; ov.jaw = 1.4 * alive + 0.3; ov.still = true; ov.lookFwd = false;
+      ov.armL = new THREE.Vector3(x + Math.sin(T * 13) * 0.6 * alive + 0.6, y + 2.4 + Math.cos(T * 11) * 0.4, z);
+      ov.armR = new THREE.Vector3(x - 0.6 - Math.sin(T * 12) * 0.6 * alive, y + 2.3 + Math.sin(T * 9) * 0.5 * alive, z);
+      ov.footL = new THREE.Vector3(x + 0.15, y + 0.05 - (1 - alive) * 0.1 + Math.sin(T * 14) * 0.2 * alive, z + 0.1);
+      ov.footR = new THREE.Vector3(x - 0.15, y + 0.05 + Math.cos(T * 15) * 0.2 * alive, z - 0.1);
+      ov.headRoll = (1 - alive) * 0.9;
+    }
+  }
+  Object.assign(Pale, { x, z, y, yaw, speed: sp, mode, look: T > E.shriek && T < E.stop ? R.camera.position : null, ov });
+  setPaleVisible(T < E.gone + 0.5);
+  palePose(dt, t);
+  for (const ev of Pale.events) if (T < E.grab) Sound.play('paleStep', { x: ev.x, y: 0.05, z: ev.z });
+  Pale.events.length = 0;
+}
+// leaving the ending by any door: the world back as it was
+function breachEndingLeave() {
+  if (Cinema.endKind !== 'l3' && !Cinema.surface && !(SURF.group && SURF.group.visible)) return;
+  Cinema.surface = false;
+  if (SURF.group) SURF.group.visible = false;
+  if (SURF.blood) SURF.blood.visible = false;
+  if (Cinema.brDeck) Cinema.brDeck.visible = false;
+  if (World.group) World.group.visible = true;
+  if (Breach.hatch) Breach.hatch.g.visible = true;
+  if (Colossus.root) Colossus.root.visible = false;
+  setPaleVisible(false);
+  if (SURF.saved) { WS.field.value = SURF.saved.f; WS.fieldXf.value.copy(SURF.saved.xf); SURF.saved = null; }
+  Debris.free = false;
+  Cinema.brYaw = undefined; Cinema.brPitch = undefined;
+  applyRenderDistance();
+}
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
 const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false };
-const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', camp: 'Campaign · All the Way Down' };
+const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
+// levels still in early access: playable once the code has been entered
+const EARLY_MAPS = ['l2', 'l3'];
 
 function loadSettings() {
   let saved = {};
@@ -15832,8 +17913,8 @@ function loadSettings() {
   Settings.rdist = [30, 50, 80, 140].includes(saved.rdist) ? saved.rdist : 80;
   Settings.net = saved.net === 'relay' ? 'relay' : 'auto';
   Settings.whisper = saved.whisper !== false;
-  Settings.early = saved.early === true;   // Seize - B5 unlocked with the early access code
-  Settings.map = saved.map === 'camp' ? 'camp' : saved.map === 'l2' && Settings.early ? 'l2' : 'l1';
+  Settings.early = saved.early === true;   // Seize - B5 and Breach - A1 unlocked with the early access code
+  Settings.map = saved.map === 'camp' ? 'camp' : EARLY_MAPS.includes(saved.map) && Settings.early ? saved.map : 'l1';
   Settings.ui = [0.7, 0.85, 1].includes(saved.ui) ? saved.ui : 0.85;
   applyUiSize();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
@@ -15873,19 +17954,20 @@ function renderSwatches() {
 function applyUiSize() { $('hud').style.setProperty('--ui', String(Settings.ui)); }
 function renderMaps() {
   document.querySelectorAll('#maps .map').forEach((b) => {
-    if (b.dataset.map === 'l2') {
-      // Seize - B5 is still coming soon - unless this player has entered the early access code
+    const ea = EARLY_MAPS.indexOf(b.dataset.map);
+    if (ea >= 0) {
+      // still coming soon - unless this player has entered the early access code
       const open = !!Settings.early;
       b.classList.toggle('locked', !open);
-      setText(b.querySelector('.mn'), open ? 'Level 2 · Early access' : 'Level 2 · Coming soon');
+      setText(b.querySelector('.mn'), 'Level ' + (ea + 2) + ' · ' + (open ? 'Early access' : 'Coming soon'));
     }
     const on = b.dataset.map === Settings.map; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
   });
 }
 // the early access code was right: open Seize - B5 and pick it
-function unlockEarlyAccess() {
-  Settings.early = true; Settings.map = 'l2'; saveSettings(); renderMaps();
-  netNote('Early access unlocked. Seize - B5 is selected.');
+function unlockEarlyAccess(want) {
+  Settings.early = true; Settings.map = EARLY_MAPS.includes(want) ? want : 'l2'; saveSettings(); renderMaps();
+  netNote('Early access unlocked: Seize - B5 and Breach - A1. ' + MAP_NAMES[Settings.map].split(' · ')[0] + ' is selected.');
 }
 function wireSegs(id, key, apply, parse = (v) => v) {
   const box = $(id);
@@ -15916,7 +17998,7 @@ function setMode(m) {
 // Only one level's world exists at a time: switching tears the old one down and builds the next. Reach - B4
 // is the one standing behind the menu (the opening and the lobby are set in it).
 const _waitFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-function levelForMap(map) { return map === 'l2' ? 'l2' : 'l1'; }
+function levelForMap(map) { return map === 'camp' ? Game.campLv || 'l1' : LEVELS[map] ? map : 'l1'; }
 function disposeTree(o) {
   const shared = new Set(GeoCache.values());
   o.traverse((n) => { if (n.geometry && !shared.has(n.geometry) && !(n.geometry.userData && n.geometry.userData.ni)) n.geometry.dispose(); });
@@ -15927,7 +18009,9 @@ function resetLevelState() {
   OCC.cache.clear(); OCC.slot = []; OCC.mate = []; R.poolPicked = null;
   for (const u of WS.occPt.value) u.w = -1;
   Creature.inited = false; Creature.override = null;
-  setChudVisible(false);
+  setChudVisible(false); setPaleVisible(false); PS.init = false; CS.init = false;
+  Breach.hatch = null; Breach.silo = null;
+  if (R.key) { R.key.intensity = 0; R.backlight.intensity = 0; }
 }
 async function loadLevel(lv, say = () => {}) {
   if (Game.levelKey === lv && Game.L) return;
@@ -15945,6 +18029,7 @@ async function loadLevel(lv, say = () => {}) {
     buildDynamic(Game.L);
     R.scene.add(World.group);
     if (LEVELS[lv].monster === 'chud' && !Chud.ready) { say('Something heavy is moving…'); await _waitFrame(); buildChud(R.scene); }
+    if (LEVELS[lv].monster === 'pale' && !Pale.ready) { say('Something is standing very still…'); await _waitFrame(); buildPale(R.scene); }
     say('Warming up…'); await _waitFrame();
     World.areas.forEach((a) => { a.group.visible = true; });
     try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled lazily instead */ }
@@ -16173,7 +18258,7 @@ function wireMenus() {
   renderSwatches(); renderMaps(); wireKeypad();
   $('maps').addEventListener('click', (e) => {
     const b = e.target.closest('.map'); if (!b) return;
-    if (b.classList.contains('locked')) { openAccessPad(); return; }
+    if (b.classList.contains('locked')) { openAccessPad(b.dataset.map); return; }
     Settings.map = b.dataset.map; saveSettings(); renderMaps();
   });
   wireSegs('uisize', 'ui', applyUiSize, Number);
@@ -16225,17 +18310,23 @@ function wireMenus() {
   });
   $('btn-resume').addEventListener('click', () => { $('pause').hidden = true; Game.paused = false; lockPointer(true); });
   $('btn-quit').addEventListener('click', async () => { $('pause').hidden = true; await backToLobby(); });
-  $('btn-again').addEventListener('click', () => { if (Net.mode === 'solo' || netIsHost()) startGame(); });
+  $('btn-again').addEventListener('click', () => {
+    if (!(Net.mode === 'solo' || netIsHost())) return;
+    // the campaign goes on to the next level, or back to the start
+    if (Settings.map === 'camp') Game.campLv = Game.endNext || 'l1';
+    startGame();
+  });
   $('btn-menu').addEventListener('click', backToLobby);
 }
 async function backToLobby() {
   resetEnding();
+  Game.campLv = 'l1'; Game.endNext = null;
   if (Net.mode !== 'solo') { await netLeave(); netNote(readyNote(), !NetCaps.online); }
   Game.g = null; Game.round = -1; Game.me = null;
   for (const [, m] of Game.mates) R.scene.remove(m.h.root);
   Game.mates.clear();
   updateCreature(0, 0, { mode: 'hidden' }, Game.L, R.camera.position);
-  setChudVisible(false);
+  setChudVisible(false); setPaleVisible(false);
   if (Game.levelKey !== 'l1') await showLevelLoading('l1');
   enterLobbyScene();
 }
@@ -16422,12 +18513,14 @@ function tickFrame(now) {
       if (!Game.paused) updateLocalPlayer(dt, t);
       R.fade = damp(R.fade, 0, 2.5, dt);
       // what is waiting at the bottom gets built a little at a time while the team is on the last floors
-      if (!Chud.ready && Game.g.ca >= 8) chudBuildStep(3, R.scene);
+      if (!Chud.ready && Game.g.lv === 'l1' && Game.g.ca >= 8) chudBuildStep(3, R.scene);
+      if (!Colossus.ready && Game.g.lv === 'l3' && Game.g.ca >= 3) colossusBuildStep(3, R.scene);
       processGameEvents();
       tickKeypad();
       // the level's monster is posed before anyone it is holding, and before the camera of whoever that is
       if (levelHasBeast(Game.g.lv)) { updateCreature(dt, t, { mode: 'hidden' }, Game.L, R.camera.position); updateBeastClient(dt, t); updateBeastKill(dt); }
       else { updateKill(dt); updateLairs(dt); }
+      if (Game.g.lv === 'l3') updateBreachWorld(dt, t);
       updateMates(dt, t);
       crd = updatePlayCamera(dt, t);
       if (!levelHasBeast(Game.g.lv)) updateCreature(dt, t, Game.g.cr, Game.L, R.camera.position);
@@ -16476,7 +18569,8 @@ function tickFrame(now) {
   if (Game.mode === 'play') R.fear = damp(R.fear, Math.max(crVisible ? clamp(1 - crd / 14, 0, 1) * (cr.mode === 'run' ? 1 : 0.55) : 0, threat * 0.85, R.fearKick), 3, dt);
   R.whiteFlash = Game.mode === 'end' ? R.whiteFlash : Math.max(0, R.whiteFlash - dt * 1.5);
   setAreaVisibility(ca, R.camera.position);
-  if (Game.mode === 'end' && Cinema.teaser) { R.hemi.intensity = 0.02; R.scene.fog.density = 0.035; } else updateAtmosphere(dt, ca);
+  if (Game.mode === 'end' && Cinema.surface) { /* the surface sets its own sky and light */ }
+  else if (Game.mode === 'end' && Cinema.teaser) { R.hemi.intensity = 0.02; R.scene.fog.density = 0.035; } else updateAtmosphere(dt, ca);
   if (Game.mode === 'play') updateLightPool(dt, R.camera, ca);
   adaptResolution(dt);
   renderFrame(t, dt);

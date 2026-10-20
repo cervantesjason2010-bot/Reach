@@ -17,7 +17,7 @@ function patchLiftCells(L) {
   }
   // rooms built inside the tall halls get their own ceilings: the shelters, and the supervisor's office on the dock
   L.areas.forEach((A, ai) => {
-    if (!['dock', 'pump', 'generator', 'lift'].includes(A.theme)) return;
+    if (!['dock', 'pump', 'generator', 'lift', 'silo'].includes(A.theme)) return;
     const low = new Set();
     for (let z = A.offZ; z < A.offZ + A.h; z++) for (let x = A.offX; x < A.offX + A.w; x++) {
       const i = z * L.W + x;
@@ -429,12 +429,12 @@ function buildLiftDynamic(L) {
 function placeLift(p) {
   const S = LIFT.S, T = Lift.travel;
   for (const s of Lift.segs) {
-    const y = s.n * S - (T - p);
+    const y = (liftGoesUp() ? -1 : 1) * (s.n * S - (T - p));
     s.grp.position.y = y;
     s.grp.visible = y > -S - 0.5 && y < 3.6;
   }
   // the needle: B2 at p = 0, B4 at the end
-  const level = 2 + p / S;
+  const level = liftGoesUp() ? 5 - 5 * p / T : 2 + p / S;
   Lift.needle.rotation.z = Math.PI / 2 - (level / 10) * Math.PI;
 }
 // the ride: steady all the way down; when the power dies the car drops the last few centimetres of free cable

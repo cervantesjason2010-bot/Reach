@@ -240,7 +240,7 @@ function beastEye(B, bone, x, y, z, r, s, opts = {}) {
 // a row of teeth along an arc: [y of the gum, which way they point (-1 down, 1 up), arc centre z, radius]
 function beastTeeth(B, bone, cy, dir, cz, rad, opts) {
   const T = new Batch(), r = mulberry32(opts.seed || 7), parent = new THREE.Group();
-  const tooth = plainMat(0xb8a478, { roughness: 0.32 }), rot = plainMat(0x5a4426, { roughness: 0.5 }), gum = plainMat(0x6a2a26, { roughness: 0.3 });
+  const tooth = opts.toothMat || plainMat(0xb8a478, { roughness: 0.32 }), rot = plainMat(0x5a4426, { roughness: 0.5 }), gum = opts.gumMat || plainMat(0x6a2a26, { roughness: 0.3 });
   const n = opts.n || 12, a0 = opts.a0 || -1.15, a1 = opts.a1 || 1.15, rest = B.rest[bone];
   for (let i = 0; i < n; i++) {
     if (opts.gap && opts.gap.includes(i)) continue;

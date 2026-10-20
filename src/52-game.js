@@ -42,6 +42,7 @@ function startNewRound() {
   Game.g.mp = typeof Settings !== 'undefined' ? Settings.map : 'l1';
   Game.g.lv = Game.levelKey || 'l1';
   if (Game.g.lv === 'l2') seizeNewRound(Game.g);
+  if (Game.g.lv === 'l3') { seizeCodes(Game.g); paleNewRound(Game.g); }
   Game.sim = { state: 'dormant', timer: INTRO_SECONDS + 75, path: null, pathT: 0, goal: null, lastSeen: null, lost: 0, seeT: {}, reachSafe: null, reachT: 0, ext: 0, cool: {}, area: 0,
     holds: {}, insideT: 0, x: 0, z: 0, yaw: 0, speed: 0, wanderT: 0, eatT: 0, victim: null, scream: 0, spawnFor: -1,
     born: false, travelT: 0, probe: null };
@@ -87,6 +88,7 @@ function hostTick(dt) {
   tickLevers(g);
   updateLift(g, living, dt);
   if (g.lv === 'l2') chudTick(g, living, players, dt, open);
+  else if (g.lv === 'l3') paleTick(g, living, players, dt, open);
   else creatureTick(g, living, dt, open);
 }
 

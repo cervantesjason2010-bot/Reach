@@ -101,7 +101,7 @@ function assembleLevel(maps) {
       if (c === 'w') L.water[i] = 1;
       if (c === '=') { L.low[i] = 1; L.ceil[i] = 1.45; }
       if (c === 'U') L.low[i] = 1;                     // under a rack: only crouched
-      if (c === 'z' || c === 'Z' || (ai === 0 && c === '@')) L.ceil[i] = 3.2;
+      if (c === 'z' || c === 'Z' || (ai === 0 && c === '@')) L.ceil[i] = c === 'z' && p.liftH ? p.liftH : 3.2;   // a platform under a shaft has the shaft over it
       const wx = gx + 0.5, wz = gz + 0.5;
       if (c === 'c') L.items.push({ id: 'crowbar', type: 'crowbar', area: ai, x: wx, z: wz });
       if (c === 'k') L.items.push({ id: 'key' + ai, type: 'keycard', area: ai, x: wx, z: wz });

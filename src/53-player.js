@@ -267,6 +267,7 @@ function findInteractable(g) {
       if (d.type === 'v') return st.on ? { ok: false, label: 'Valve open' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to turn the valve', progress: st.p };
       if (d.type === 'Q') return st.on ? { ok: false, label: 'Override done' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to override the blast door', progress: st.p };
       if (d.type === 'W') return st.on ? { ok: false, label: 'Power on' } : { hold: 'dev:' + d.id, ok: true, label: 'Hold E to throw the main switch', progress: st.p };
+      if (d.type === 'u' && g.lv === 'l3') return g.lift.st === 0 ? { action: 'call', id: d.id, ok: true, label: 'Cycle the hatch' } : { ok: false, label: g.lift.st === 1 ? 'Hatch opening in ' + Math.ceil(g.lift.t) + 's' : 'The hatch is open' };
       if (d.type === 'u') return g.lift.st === 0 ? { action: 'call', id: d.id, ok: true, label: 'Call the freight lift' } : { ok: false, label: g.lift.st === 1 ? 'Lift arriving in ' + Math.ceil(g.lift.t) + 's' : 'Lift is here' };
       return null;
     });
@@ -302,6 +303,8 @@ function processGameEvents() {
       case 'chudSaw': if (ev.who === myId) { Sound.play('sting'); R.fearKick = 1; showToast('It saw your light', 'danger', 1800); } break;
       case 'chudBang': Sound.chudStep({ x: ev.x, y: 0.5, z: ev.z }, 1.3, 0); Sound.chudGrunt({ x: ev.x, y: 2.2, z: ev.z }, true); break;
       case 'chudGrab': Sound.play('grab', pos); Sound.chudGrunt(pos, true); if (ev.who !== myId) showToast(who + ' was taken', 'danger', 2600); break;
+      case 'paleSaw': if (ev.who === myId) { Sound.play('sting'); R.fearKick = 1; showToast('It saw you move. Freeze - or run', 'danger', 2000); } break;
+      case 'paleGrab': Sound.play('grab', pos); if (ev.who !== myId) showToast(who + ' was taken', 'danger', 2600); break;
       case 'drop': Sound.play('clunk', pos); break;
       case 'whistle': if (ev.who !== myId) Sound.play('whistle', { x: ev.x, y: 1.6, z: ev.z }); break;
       case 'fuse': Sound.play('fuse', pos); break;
@@ -317,8 +320,8 @@ function processGameEvents() {
         else { Sound.play('power', pos); Sound.play('alarm', pos); showToast('The generator is running. Everything down here heard that.', 'danger', 4200); R.shake = 0.6; }
         break;
       case 'strain': Sound.play('creak', pos); Sound.play('clunk', pos); break;
-      case 'liftCalled': Sound.play('alarm', pos); showToast(g.lv === 'l2' ? 'Lift called. Thirty seconds. It has seen the lights come on.' : 'Lift called. Thirty seconds. Stay alive.', 'danger', 3600); break;
-      case 'liftArrived': Sound.play('liftArrive', pos); showToast('The lift is here. Everyone in!', 'good', 3600); break;
+      case 'liftCalled': Sound.play(g.lv === 'l3' ? 'klaxon' : 'alarm', pos); showToast(g.lv === 'l3' ? 'Hatch cycling. Thirty seconds. The klaxon is bringing it.' : g.lv === 'l2' ? 'Lift called. Thirty seconds. It has seen the lights come on.' : 'Lift called. Thirty seconds. Stay alive.', 'danger', 3600); break;
+      case 'liftArrived': if (g.lv === 'l3') { Sound.play('hatchOpen', pos); showToast('The hatch is open. Everyone onto the platform!', 'good', 3600); } else { Sound.play('liftArrive', pos); showToast('The lift is here. Everyone in!', 'good', 3600); } break;
       case 'open': {
         const lt = ev.type === 'open' ? (Game.L.locks[ev.lock] || {}).type : '';
         if (lt === 'B') { Sound.play('snap', pos); Sound.play('boardsFall', pos); } else if (lt === 'K') { Sound.play('beep', pos); Sound.play('door', pos); } else Sound.play('door', pos);
@@ -428,7 +431,7 @@ function updateMates(dt, t) {
     const kl = g.kl, beastKill = m.dead && kl && kl.c && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < beastKillLen(kl);
     const killing = beastKill || (m.dead && kl && !kl.c && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
     const corpse = m.dead && !killing ? Game.corpses.get(p.id) : null;
-    m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser)) && (!m.dead || !!killing || !!corpse);
+    m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser && !Cinema.surface)) && (!m.dead || !!killing || !!corpse);
     if (killing) poseBody(m.h, beastKill ? beastKillBody(kl, Game.gt - kl.t) : KS, t, p.id.length);
     else if (corpse) poseBody(m.h, corpse, t, p.id.length);
     else {

@@ -582,7 +582,8 @@ function dressBeams(L, B, a, ai, r) {
   for (let x = a.offX + 2; x < a.offX + a.w - 1; x += 4) {
     let run = -1;
     for (let z = a.offZ; z <= a.offZ + a.h; z++) {
-      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5;
+      // (a run stops where the ceiling height changes: a beam never crosses the mouth of a shaft)
+      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5 && (run < 0 || L.ceil[k(x, z)] === L.ceil[k(x, run)]);
       if (open && run < 0) run = z;
       if ((!open || z === a.offZ + a.h) && run >= 0) {
         const z1 = open ? z + 1 : z, len = z1 - run, ce = L.ceil[k(x, run)];
@@ -598,7 +599,7 @@ function dressBeams(L, B, a, ai, r) {
   for (let z = a.offZ + 1; z < a.offZ + a.h; z += 2) {
     let run = -1;
     for (let x = a.offX; x <= a.offX + a.w; x++) {
-      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5;
+      const open = inGrid(L, x, z) && isOpenCell(L, x, z) && L.area[k(x, z)] === ai && L.ceil[k(x, z)] > 3.5 && (run < 0 || L.ceil[k(x, z)] === L.ceil[k(run, z)]);
       if (open && run < 0) run = x;
       if ((!open || x === a.offX + a.w) && run >= 0) {
         const x1 = open ? x + 1 : x, len = x1 - run, ce = L.ceil[k(run, z)];
