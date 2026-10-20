@@ -18056,6 +18056,7 @@ async function loadLevel(lv, say = () => {}) {
     R.scene.add(World.group);
     if (LEVELS[lv].monster === 'chud' && !Chud.ready) { say('Something heavy is moving…'); await _waitFrame(); buildChud(R.scene); }
     if (LEVELS[lv].monster === 'pale' && !Pale.ready) { say('Something is standing very still…'); await _waitFrame(); buildPale(R.scene); }
+    if (lv === 'l3' && !SURF.group) { say('Sealing the bunker…'); await _waitFrame(); buildSurfaceSet(); }
     say('Warming up…'); await _waitFrame();
     World.areas.forEach((a) => { a.group.visible = true; });
     try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled lazily instead */ }
@@ -18066,6 +18067,7 @@ async function loadLevel(lv, say = () => {}) {
 async function showLevelLoading(lv) {
   const box = $('level-load');
   setText($('ll-title'), LEVELS[lv].title);
+  setText(document.querySelector('#level-load .nc-kick'), lv === 'l3' ? 'Going up' : lv === 'l1' ? 'Back to the start' : 'Going down');
   setText($('ll-note'), '');
   box.hidden = false;
   try { await loadLevel(lv, (t) => setText($('ll-note'), t)); } catch (e) { console.error(e); }
