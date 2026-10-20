@@ -147,7 +147,7 @@ function startEnding() {
   Cinema.mode = 'ending';
   setMode('end');
   setLetterbox(true);
-  $('end').hidden = true; $('next-card').hidden = true; $('next-card').className = 'fullscreen';
+  $('end').hidden = true; setNextCard('Level 2', 'Seize', 'B5', Settings.early ? 'Early access' : 'Coming soon');
   const L = Game.L, a = L.areas[ENDCAR.ai];
   const lock = L.locks.find((l) => l.type === 'Z');
   Cinema.endDoor = lock;
@@ -214,7 +214,7 @@ function endingCut() {
   for (const [, m] of Game.mates) m.h.root.visible = false;
   R.mates.forEach((l) => { l.light.intensity = 0; });
   // the Chud at the end of the corridor, its back to you
-  Object.assign(Chud, { x: TEASER.ox + 0.0, z: TEASER.oz + 15.4, y: 0, yaw: 0, speed: 0, mode: 'idle', look: null, reach: 0, grip: undefined });
+  Object.assign(Chud, { x: TEASER.ox + 0.0, z: TEASER.oz + 15.4, y: 0, yaw: 0, speed: 0, mode: 'idle', look: null, reach: 0, grip: undefined, ov: null, snap: true });
   Chud.root.visible = true;
   Cinema.chudSet = true;
   try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled on first sight instead */ }
@@ -226,6 +226,7 @@ function endingLeave() {
   if (Chud.root) Chud.root.visible = false;
   Sound.chudBreath({ x: 0, y: 0, z: 0 }, false);
   R.key.intensity = 0; R.backlight.intensity = 0;
+  seizeEndingLeave();
   Cinema.teaser = false; Cinema.zOpen = undefined;
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
 }
@@ -381,9 +382,11 @@ function showEndScreen() {
   setText($('end-kicker'), two ? 'Level 2 · Complete' : S.camp ? 'Campaign · Level 1 of 2 complete' : 'Level 1 · Complete');
   setText($('end-title'), two ? 'Seize - B5' : 'Reach - B4');
   const out = S.team.filter((m) => m.out).length, solo = S.team.length <= 1;
-  const tail = two ? 'The lift is still going down.' : 'It didn\'t stop at the bottom.';
+  const tail = two ? 'It went up.' : 'It didn\'t stop at the bottom.';
   setText($('end-sub'), (solo ? 'You made it into the lift. ' : out === S.team.length ? 'Your whole team made it into the lift. ' : 'Some of you made it into the lift. ') + tail);
-  setText($('end-next-name'), two ? 'Level 3' : 'Seize - B5');
+  const next = two ? 'Breach - A1' : 'Seize - B5', open = two || Settings.early;
+  setText($('end-next-name'), next); setText($('end-next-note'), open ? 'Early access' : 'Coming soon');
+  setText($('cr-next'), next + ' · ' + (open ? 'Early access' : 'Coming soon'));
   const mm = Math.floor(S.time / 60), ss = String(S.time % 60).padStart(2, '0');
   const stats = [[mm + ':' + ss, 'Time'], [solo ? (out ? 'Yes' : 'No') : out + ' / ' + S.team.length, 'Made it out'], [String(S.taken), 'Times taken'], [nA + ' / ' + nA, 'Areas']];
   const box = $('end-stats'); box.textContent = '';
@@ -404,43 +407,295 @@ function showEndScreen() {
   Sound.setTheme('title'); Sound.titleMusic(true);
 }
 
-// ---------- the end of Seize - B5: short and brutal ----------
-// The doors grind shut with it coming down the hall; it hits them like a lorry; the car drops away.
+// ---------- the end of Seize - B5: the gates, and the long way up ----------
+// The brass gates fold shut. Down the hall it comes, flat out, and hits them hard enough to bow them; it hangs
+// on the lattice with its face in the bars, screaming into the car. The brakes let go - and for the first time
+// a car goes up. It is under you in the shaft for a while, banging on the floor; then it falls, a long way.
+// B4, B3, B2, B1 go by in the dark. The radio says there is nothing above B-1 but the old bunker. The car stops
+// at A-1, in front of a blast door under a turning red lamp - and something on the other side knocks. Three
+// times. BREACH - A1.
+const SZ_T = {
+  shut: 0.3, roar: 0.7, slam: 3.4, lurch: 5.7, black: 5.85, up: 6.3, radio1: 7.2, below: 8.4, bang: 9.6, radio2: 11.0,
+  fall: 12.7, radio3: 14.3, crash: 15.6, arrive: 17.4, knock1: 19.5, knock2: 20.4, knock3: 21.3, title: 22.6, soon: 23.6, screen: 27.4,
+};
+const SZ_FLOOR = 4.5, SZ_RISE = SZ_FLOOR * 5, SZ_RUN = 4.2;
+const SHAFT = { group: null, slits: [], beacon: null, dial: null, needle: null };
+
+// the shaft beyond the gate, built once: a concrete wall with a landing every floor (closed doors, a line of
+// light round them, the number painted beside them), rail brackets and conduit going by, and at the top the
+// blast door at A-1. Local frame: origin at the gate, +z into the car, x along the gate, y up from B5's floor.
+function buildShaftSet() {
+  if (SHAFT.group) return SHAFT.group;
+  const g = new THREE.Group(), add = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); g.add(o); return o; };
+  const wallGeo = new THREE.PlaneGeometry(6, 36), uv = wallGeo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 3, uv.getY(i) * 18);
+  add(wallGeo, mat('concrete', { color: 0x48484a }), 0, 12, -0.62);
+  const steel = mat('metalDark'), rust = mat('rust');
+  for (const x of [-2.15, 2.15]) {
+    add(boxGeo(0.08, 36, 0.1), steel, x, 12, -0.52);
+    for (let y = -5; y < 30; y += 1.5) add(boxGeo(0.22, 0.12, 0.14), rust, x, y, -0.55);
+  }
+  add(cylGeo(0.035, 0.035, 36, 8), rust, 1.6, 12, -0.56);
+  for (let y = -5; y < 30; y += 2.1) add(boxGeo(0.12, 0.05, 0.08), steel, 1.6, y, -0.56);
+  const names = ['B5', 'B4', 'B3', 'B2', 'B1', 'A1'];
+  SHAFT.slits = [];
+  for (let i = 1; i < 6; i++) {
+    const y0 = i * SZ_FLOOR;
+    // the sill each landing makes: a lip of concrete, the clearest thing going past
+    add(cboxGeo(6, 0.45, 0.24, 0.02), mat('concrete'), 0, y0 - 0.22, -0.48);
+    add(boxGeo(6, 0.06, 0.02), hazardMat(), 0, y0 - 0.02, -0.355);
+    if (i < 5) {
+      // a pair of closed landing doors with the corridor's light round their edges
+      for (const s of [-1, 1]) add(cboxGeo(1.42, 2.7, 0.08, 0.01), mat('metal', { color: 0x5a5e58 }), s * 0.73, y0 + 1.35, -0.5);
+      const glow = new THREE.MeshBasicMaterial({ color: i === 1 ? 0xff3020 : 0xffc890 });
+      add(boxGeo(0.025, 2.6, 0.02), glow, 0, y0 + 1.33, -0.47);
+      add(boxGeo(2.8, 0.025, 0.02), glow, 0, y0 + 0.02, -0.47);
+      SHAFT.slits.push({ m: glow, base: i === 1 ? 0xff3020 : 0xffc890, i });
+      add(planeGeo(0.7, 0.42), labelMat(names[i], { fg: '#d8d4c4', w: 256, h: 152, size: 120, font: '"Big Shoulders Stencil Display", Impact, sans-serif', weight: '900' }), 2.0, y0 + 2.2, -0.6);
+    }
+  }
+  // A-1: the blast door. Hazard frame, a wheel, the number, a red lamp over it.
+  const yA = 5 * SZ_FLOOR;
+  add(cboxGeo(3.1, 2.95, 0.3, 0.03), mat('steel', { color: 0x6a6c64 }), 0, yA + 1.475, -0.52);
+  for (const [w, h, x, y] of [[3.3, 0.14, 0, yA + 3.0], [0.14, 3.0, -1.62, yA + 1.5], [0.14, 3.0, 1.62, yA + 1.5]]) add(planeGeo(w, h), hazardMat(), x, y, -0.36);
+  add(torusGeo(0.32, 0.035, 8, 28), mat('steelDark'), 0, yA + 1.35, -0.33);
+  for (let k = 0; k < 3; k++) add(boxGeo(0.62, 0.03, 0.03), mat('steelDark'), 0, yA + 1.35, -0.33, 0, 0, k * Math.PI / 3);
+  add(planeGeo(1.0, 0.5), labelMat('A-1', { fg: '#d8a535', w: 256, h: 128, size: 110, font: '"Big Shoulders Stencil Display", Impact, sans-serif', weight: '900' }), -0.85, yA + 2.35, -0.36);
+  add(planeGeo(1.5, 0.12), labelMat('SURFACE ACCESS · SEALED', { bg: '#b8160e', fg: '#f2eee2', w: 512, h: 48, size: 30 }), 0.55, yA + 2.45, -0.36);
+  add(cylGeo(0.09, 0.11, 0.12, 14), mat('steelDark'), 0, yA + 3.22, -0.42);
+  SHAFT.beacon = add(new THREE.SphereGeometry(0.09, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x400806 }), 0, yA + 3.28, -0.42);
+  g.visible = false;
+  SHAFT.group = g;
+  return g;
+}
+// the brass dial over the gate inside the car, and its needle
+function buildCarDial() {
+  if (SHAFT.dial) return SHAFT.dial;
+  const d = new THREE.Group();
+  const plate = new THREE.Mesh(cboxGeo(0.78, 0.26, 0.03, 0.01), WM.brass); d.add(plate);
+  const face = new THREE.Mesh(planeGeo(0.7, 0.13), labelMat('B5  B4  B3  B2  B1  A1', { bg: '#d8ccaa', fg: '#2a1e0a', w: 512, h: 96, size: 40, font: 'serif', weight: '700' }));
+  face.position.set(0, 0.06, 0.017); d.add(face);
+  const pivot = new THREE.Group(); pivot.position.set(0, -0.11, 0.025); d.add(pivot);
+  const nd = new THREE.Mesh(boxGeo(0.008, 0.16, 0.004), plainMat(0x1a0e08)); nd.position.y = 0.08; pivot.add(nd);
+  const hub = new THREE.Mesh(cylGeo(0.02, 0.02, 0.01, 12), WM.brassDull); hub.rotation.x = Math.PI / 2; pivot.add(hub);
+  SHAFT.dial = d; SHAFT.needle = pivot;
+  return d;
+}
+// how far the car has climbed: away gently, a long steady pull, easing into A-1; and a drop when it's hit
+function szRise(T) {
+  const E = SZ_T, D = E.arrive - E.up, a = 1.8, v = SZ_RISE / (D - a);
+  const t = clamp(T - E.up, 0, D);
+  let y = t < a ? v * t * t / (2 * a) : t < D - a ? v * a / 2 + v * (t - a) : SZ_RISE - v * (D - t) * (D - t) / (2 * a);
+  const h = T - E.bang; if (h > 0 && h < 1.3) y -= 0.32 * Math.sin(h / 1.3 * Math.PI) * (1 - h / 1.3);
+  return y;
+}
+const _szP = new THREE.Vector3(), _szQ = new THREE.Vector3(), _szOv = {};
 function startSeizeEnding() {
   Cinema.endKind = 'l2'; Cinema.mode = 'ending';
   setMode('end'); setLetterbox(true);
-  $('end').hidden = true;
-  const L = Game.L, lock = L.locks.find((l) => l.type === 'Z'), me = Game.me;
+  $('end').hidden = true; setNextCard('Level 3', 'Breach', 'A1', 'Early access');
+  const L = Game.L, lock = L.locks.find((l) => l.type === 'Z'), me = Game.me, last = L.areas.length - 1;
   Cinema.endDoor = lock;
-  const a = L.areas[L.areas.length - 1];
-  Cinema.endCam = me && !me.dead ? { x: me.x, z: me.z, yaw: me.yaw, pitch: me.pitch } : { x: lock.x + 2.5, z: lock.z, yaw: Math.PI / 2, pitch: 0 };
-  Cinema.t = 0; Cinema.zOpen = 1; Cinema.kick = 0; Cinema.kickV = 0; Cinema.ca = L.areas.length - 1;
+  // where the car is: the middle of its floor; which way is out through the gate; which way the gate runs
+  let cx = 0, cz = 0, n = 0;
+  for (let z = 0; z < L.H; z++) for (let x = 0; x < L.W; x++) { const i = z * L.W + x; if (L.ch[i] === 'z' && L.area[i] === last) { cx += x + 0.5; cz += z + 0.5; n++; } }
+  if (n) { cx /= n; cz /= n; } else { cx = lock.x + 2.5; cz = lock.z; }
+  const vertical = lock.cells.every((c) => c.x === lock.cells[0].x);
+  const out = vertical ? { x: Math.sign(lock.x - cx) || -1, z: 0 } : { x: 0, z: Math.sign(lock.z - cz) || -1 };
+  Cinema.szOut = out; Cinema.szAlong = { x: -out.z, z: out.x }; Cinema.szCar = { x: cx, z: cz };
+  const inCar = me && !me.dead && L.ch[Math.floor(me.z) * L.W + Math.floor(me.x)] === 'z';
+  Cinema.endCam = inCar ? { x: me.x, z: me.z, yaw: me.yaw, pitch: me.pitch } : { x: cx - out.x * 0.6, z: cz - out.z * 0.6, yaw: Math.atan2(out.x, out.z) + Math.PI, pitch: 0 };
+  // how far down the hall it can be seen coming from
+  let far = 1.5;
+  while (far < 14) { const x = Math.floor(lock.x + out.x * (far + 0.5)), z = Math.floor(lock.z + out.z * (far + 0.5)); if (!inGrid(L, x, z) || !WALKABLE.has(L.ch[z * L.W + x])) break; far += 0.5; }
+  Cinema.szFar = far;
+  Cinema.t = 0; Cinema.zOpen = 1; Cinema.kick = 0; Cinema.kickV = 0; Cinema.ca = last; Cinema.lamp = 1; Cinema.flicker = 0; Cinema.szShaft = false; Cinema.fov = 72;
   Cinema.stats = endStats();
-  const door = { x: lock.x, y: 1.5, z: lock.z };
+  Cinema.lockD = World.locks ? World.locks.find((D) => D.lock.type === 'Z') : null;
+  // the shaft and the dial, placed on this gate
+  const ry = Math.atan2(-out.x, -out.z);
+  const S = buildShaftSet(); S.position.set(lock.x, 0, lock.z); S.rotation.set(0, ry, 0); S.visible = false;
+  if (!S.parent) R.scene.add(S);
+  const dial = buildCarDial(); dial.position.set(lock.x - out.x * 0.56, 3.02, lock.z - out.z * 0.56); dial.rotation.set(0, ry, 0); dial.visible = true;
+  if (!dial.parent) R.scene.add(dial);
+  Object.assign(Chud, { x: lock.x + out.x * far, z: lock.z + out.z * far, y: 0, yaw: Math.atan2(-out.x, -out.z), speed: 0, mode: 'hunt', look: null, reach: 0, grip: undefined, ov: null, snap: true });
+  Sound.setTheme('oldwing', { drone: 0.4 });
+  const gate = { x: lock.x, y: 1.6, z: lock.z }, car = { x: cx, y: 3, z: cz }, under = (d) => ({ x: cx, y: -szRise(Cinema.t) - d, z: cz });
+  const T = SZ_T;
   setCues([
-    [0.3, () => { Sound.play('door', door); Sound.play('scrape', door); }],
-    [1.0, () => { Sound.chudStep({ x: lock.x - 6, y: 0.2, z: lock.z }, 1.3, 0.6); R.shake = 0.9; }],
-    [1.7, () => { Sound.chudStep({ x: lock.x - 3, y: 0.2, z: lock.z }, 1.4, 0.9); Sound.chudGrunt({ x: lock.x - 3, y: 2.2, z: lock.z }, true); R.shake = 1.3; }],
-    [2.5, () => { Sound.play('ventHit', door); Sound.play('liftSlam', door); R.shake = 2; R.hit = 1.8; Cinema.kickV = -2.6; debrisShower(Cinema.endCam.x, Cinema.endCam.z, 30); }],
-    [3.4, () => { Sound.play('brakes', door); Sound.play('liftSlam', door); R.shake = 1.6; Cinema.kickV = 3; }],
-    [3.6, () => { R.fade = 1; }],
-    [4.4, () => showEndScreen()],
+    [T.shut, () => { Sound.play('gate', gate); Sound.play('scrape', gate); }],
+    [T.roar, () => { chudGrunt(); Sound.chudGrunt({ x: Chud.x, y: 2.4, z: Chud.z }, true); }],
+    [T.slam - 0.9, () => { chudGrunt(); Sound.chudGrunt({ x: Chud.x, y: 2.4, z: Chud.z }, true); }],
+    [T.slam, () => {
+      Sound.play('liftSlam', gate); Sound.play('gate', gate); Sound.play('ventHit', gate); Sound.duck(0.85, 0.3, 1.6);
+      R.shake = 2.0; R.hit = 1.8; Cinema.kickV = -2.6; debrisShower(Cinema.endCam.x, Cinema.endCam.z, 34);
+    }],
+    [T.slam + 0.25, () => { chudGrunt(); Sound.chudGrunt({ x: Chud.x, y: 2.4, z: Chud.z }, true); Sound.play('gurgle', gate); }],
+    [T.slam + 1.0, () => { Sound.play('gate', gate); R.shake = Math.max(R.shake, 0.9); }],
+    [T.slam + 1.55, () => { Sound.play('gate', gate); Sound.play('ventHit', gate); R.hit = 0.9; }],
+    [T.slam + 2.0, () => { chudGrunt(); Sound.chudGrunt({ x: Chud.x, y: 2.4, z: Chud.z }, true); }],
+    [T.lurch - 0.4, () => Sound.play('creak', car)],
+    [T.lurch, () => { Sound.play('brakes', car); Sound.play('liftSlam', car); Sound.duck(0.9, 0.5, 1.8); R.shake = 1.8; R.hit = 1.4; Cinema.kickV = 3.0; Cinema.flicker = 1; }],
+    [T.black, () => {
+      Cinema.lamp = 0; Cinema.szShaft = true; S.visible = true; setChudVisible(false); Sound.chudBreath({ x: 0, y: 0, z: 0 }, false);
+      Sound.play('flick', car); try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled on first sight */ }
+    }],
+    [T.up, () => { Sound.setTheme('elevator', { drone: 0.6, machine: 0.95 }); Sound.play('flick', car); Sound.chudGrunt(under(1), true); }],
+    [T.radio1, () => { Sound.play('radio'); subtitle('Recovery team, your car is moving. It\'s going up.', 3000); }],
+    [T.below, () => { Sound.chudGrunt(under(3), true); Sound.play('scrape', under(2)); }],
+    [T.bang, () => {
+      Sound.play('liftSlam', under(0.2)); Sound.play('ventHit', under(0.2)); Sound.play('spark', car); Sound.duck(0.8, 0.3, 1.2);
+      R.shake = 1.7; R.hit = 1.6; Cinema.kickV = -2.4; Cinema.flicker = 1.2; debrisShower(cx, cz, 30);
+    }],
+    [T.bang + 0.7, () => { Sound.play('scrape', under(0.5)); Sound.chudGrunt(under(1), true); }],
+    [T.radio2, () => { Sound.play('radio'); subtitle('There\'s nothing above B-1 but the old bunker. A-1. It\'s been sealed since-', 3400); }],
+    [T.fall, () => { Sound.play('liftSlam', under(0.3)); R.shake = 1.2; R.hit = 1.0; Cinema.flicker = 0.8; Sound.chudGrunt(under(2), true); }],
+    [T.fall + 0.5, () => { Sound.play('scrape', under(6)); Sound.chudGrunt(under(12), true); }],
+    [T.radio3, () => { Sound.play('radio'); subtitle('Whatever you hear up there, don\'t open the hatch.', 2800); }],
+    [T.crash, () => { Sound.chudStep(under(40), 1.4, 0.45); R.shake = Math.max(R.shake, 0.6); }],
+    [T.arrive - 1.4, () => Sound.play('brakes', car)],
+    [T.arrive, () => { Sound.play('clunk', car); Sound.play('liftSlam', car); Sound.setTheme('silent', { wind: 0.55, drone: 0.25 }); R.shake = 0.9; Cinema.kickV = 1.4; }],
+    [T.arrive + 0.7, () => Sound.play('bell', car)],
+    [T.knock1, () => szKnock(1)],
+    [T.knock2, () => szKnock(1.3)],
+    [T.knock3, () => szKnock(1.7)],
+    [T.title, () => { R.fade = 1; const c = $('next-card'); c.hidden = false; void c.offsetWidth; c.classList.add('show'); Sound.play('impact'); }],
+    [T.soon, () => $('next-card').classList.add('soon')],
+    [T.screen, () => showEndScreen()],
   ]);
   $('skip').hidden = false;
 }
+// something on the other side of the blast door
+function szKnock(v) {
+  const lock = Cinema.endDoor, out = Cinema.szOut, p = { x: lock.x + out.x * 0.9, y: 1.4, z: lock.z + out.z * 0.9 };
+  Sound.play('knock', p); Sound.play('thud', p); Sound.play('bump', p);
+  R.shake = Math.max(R.shake || 0, 0.35 * v); R.hit = Math.max(R.hit || 0, 0.3 * v); Cinema.kickV = -0.5 * v;
+  debrisShower(R.camera.position.x, R.camera.position.z, Math.round(8 * v));
+  Cinema.flicker = 0.5;
+}
 function updateSeizeEnding(dt, t) {
   Cinema.t += dt; runCues();
-  const T = Cinema.t, c = Cinema.endCam, lock = Cinema.endDoor, kick = cineKick(dt);
-  Cinema.zOpen = T < 0.3 ? 1 : T < 2.2 ? lerp(1, 0, smooth01((T - 0.3) / 1.9)) : 0;
-  const doorYaw = Math.atan2(-(lock.x - c.x), -(lock.z - c.z));
-  R.camera.position.set(c.x, EYE_H + kick * 0.6, c.z);
-  R.camera.rotation.set(lerp(c.pitch, 0, smooth01(T / 0.8)) + kick * 0.4, lerpAngle(c.yaw, doorYaw, smooth01(T / 0.8)), 0);
+  const T = Cinema.t, E = SZ_T, c = Cinema.endCam, lock = Cinema.endDoor, out = Cinema.szOut, al = Cinema.szAlong, kick = cineKick(dt);
+  Cinema.flicker = Math.max(0, (Cinema.flicker || 0) - dt * 1.4);
+  const rise = szRise(T);
+  // the gates: shut; bowed in by the hit, then dragged at, then hanging still
+  Cinema.zOpen = T < E.shut ? 1 : lerp(1, 0, smooth01((T - E.shut) / 1.7));
+  const D = Cinema.lockD, hold = T > E.slam && T < E.black;
+  if (D) {
+    const hitK = T > E.slam ? Math.exp(-(T - E.slam) * 5) : 0, drag = hold ? Math.max(0, Math.sin((T - E.slam) * 8.5)) * 0.06 * (T < E.lurch ? 1 : 0.4) : 0;
+    const push = hitK * 0.16 + drag;
+    D.group.position.set(lock.x - out.x * push, 0, lock.z - out.z * push);
+    D.group.rotation.z = hold ? Math.sin(T * 31) * 0.004 : 0;
+  }
+  // ---- the Chud: down the hall flat out, into the gate, hanging on it ----
+  if (T < E.black && Chud.ready) {
+    const d = Math.max(0.95, 0.95 + (E.slam - T) * SZ_RUN), seen = d <= Cinema.szFar && T > E.roar - 0.4;
+    setChudVisible(seen);
+    const ov = _szOv; for (const k in ov) delete ov[k];
+    Chud.x = lock.x + out.x * d; Chud.z = lock.z + out.z * d; Chud.yaw = Math.atan2(-out.x, -out.z);
+    Chud.look = R.camera.position; Chud.reach = 0; Chud.grip = undefined;
+    if (T < E.slam) { Chud.mode = 'hunt'; Chud.speed = SZ_RUN; Chud.ov = null; }
+    else {
+      Chud.mode = 'hunt'; Chud.speed = 0;
+      const k = T - E.slam, shake = Math.sin(k * 8.5);
+      // both hands through the lattice, pulling and shoving; its face in the bars
+      for (const [s, key, y] of [[1, 'armL', 2.05], [-1, 'armR', 1.7]]) {
+        const p = new THREE.Vector3(lock.x + out.x * (0.12 - shake * 0.03) + al.x * s * 0.62, y + Math.sin(k * 8.5 + s) * 0.04, lock.z + out.z * (0.12 - shake * 0.03) + al.z * s * 0.62);
+        ov[key] = p;
+      }
+      ov.gripL = 1; ov.gripR = 1;
+      ov.lunge = -0.08 + shake * 0.07; ov.lean = 0.12 + Math.max(0, shake) * 0.06;
+      ov.jaw = k < 0.25 ? smooth01(k / 0.25) : 0.75 + 0.25 * Math.sin(k * 5.3);
+      ov.headRoll = Math.sin(k * 3.1) * 0.12;
+      if (T > E.lurch) { const s = smooth01((T - E.lurch) / 0.15); ov.drop = 0.25 * s; ov.jaw = 1; }
+      Chud.ov = ov;
+    }
+    chudPose(dt, t);
+    for (const ev of Chud.events) {
+      const dd = dist2(ev.x, ev.z, R.camera.position.x, R.camera.position.z), felt = clamp(1 - dd / 16, 0, 1);
+      Sound.chudStep({ x: ev.x, y: 0.2, z: ev.z }, ev.power * 1.2, felt);
+      R.shake = Math.max(R.shake || 0, felt * 0.8); debrisBurst(ev.x, 0.05, ev.z, 'f', 0.4 * ev.power);
+    }
+    Chud.events.length = 0;
+    Sound.chudBreath({ x: Chud.x, y: 2.2, z: Chud.z }, seen, 1.8);
+  }
+  // ---- the shaft going by ----
+  const S = SHAFT.group;
+  if (S && Cinema.szShaft) {
+    S.position.y = -rise;
+    for (const sl of SHAFT.slits) {
+      const fl = sl.i === 1 ? (Math.random() < 0.15 ? 0.2 : 1) : 0.75 + 0.25 * Math.sin(t * 7 + sl.i * 3);
+      sl.m.color.setHex(sl.base).multiplyScalar(fl * (Cinema.flicker > 0.3 && Math.random() < 0.5 ? 0.3 : 1));
+    }
+    // A-1's lamp, turning: a red sweep that catches the door and comes in through the gate
+    const near = clamp(1 - (SZ_RISE - rise) / 4, 0, 1), sweep = Math.pow(0.5 + 0.5 * Math.sin(T * 4.2), 3);
+    SHAFT.beacon.material.color.setRGB(0.25 + 0.75 * sweep, 0.03, 0.02);
+    R.backlight.color.setHex(0xff2010); R.backlight.distance = 9;
+    R.backlight.position.set(lock.x + out.x * 0.9 - al.x * 0.0, SZ_RISE - rise + 3.0, lock.z + out.z * 0.9);
+    R.backlight.intensity = near * (2 + 22 * sweep) * (Cinema.flicker > 0.2 && Math.random() < 0.4 ? 0.2 : 1);
+  }
+  if (SHAFT.needle) {
+    const u = -0.25 + 0.5 * clamp(rise / SZ_RISE, 0, 1) + (T > E.up && T < E.arrive ? Math.sin(t * 13) * 0.004 : 0);
+    SHAFT.needle.rotation.z = -Math.atan(u / 0.17);
+  }
+  // ---- the car's lamp: on; flickering when it's hit; out when the brakes go; stuttering back ----
+  if (T >= E.black && T < E.up) Cinema.lamp = 0;
+  else if (T >= E.up && T < E.up + 0.6) Cinema.lamp = Math.random() < 0.45 ? 1 : 0.05;
+  else Cinema.lamp = Cinema.flicker > 0.15 && Math.random() < 0.5 ? 0.12 : T > E.arrive + 0.5 ? 0.55 : 1;
+  const car = Cinema.szCar;
+  // (it hangs in the middle of the car, and throws its light out through the gate)
+  R.key.color.setHex(0xffd49a); R.key.angle = 1.0; R.key.penumbra = 0.75; R.key.distance = 12;
+  R.key.position.set(car.x, 3.05, car.z); R.key.target.position.set(lock.x + out.x * 0.8, 0.7, lock.z + out.z * 0.8);
+  R.key.intensity = 60 * Cinema.lamp;
+  // ---- you ----
+  const gateYaw = Math.atan2(-(lock.x - c.x), -(lock.z - c.z));
+  const turn = smooth01(T / 0.9), flinch = T > E.slam ? smooth01((T - E.slam) / 0.45) : 0;
+  const push = T > E.arrive + 0.8 ? smooth01((T - E.arrive - 0.8) / 4.2) : 0;
+  const dGate = Math.hypot(lock.x - c.x, lock.z - c.z);
+  const back = flinch * Math.min(0.4, Math.max(0, 3.0 - dGate)) * (1 - push);
+  const fwd = push * Math.max(0, dGate - 1.4) * 0.45;
+  let px = c.x - out.x * back + (lock.x - c.x) / Math.max(dGate, 0.01) * fwd, pz = c.z - out.z * back + (lock.z - c.z) / Math.max(dGate, 0.01) * fwd;
+  let yaw = lerpAngle(c.yaw, gateYaw, turn), pitch = lerp(c.pitch, 0.04, turn);
+  if (T > E.up) {
+    // up at the dial; down at the floor when it hits from below; back to the gate
+    const up = smooth01((T - 7.6) / 0.9) * (1 - smooth01((T - 9.2) / 0.5));
+    const dn = smooth01((T - E.bang - 0.1) / 0.35) * (1 - smooth01((T - E.bang - 1.4) / 0.8));
+    pitch += up * 0.36 - dn * 0.55;
+    yaw += Math.sin(T * 0.4) * 0.03 * (1 - push);
+  }
+  pitch += kick * 0.4 + Math.sin(t * 1.3) * 0.01;
+  R.camera.position.set(px, EYE_H + kick * 0.6, pz);
+  R.camera.rotation.set(pitch, yaw, 0);
+  const fov = lerp(72, 58, push);
+  if (Math.abs(R.camera.fov - fov) > 0.05) { R.camera.fov = fov; R.camera.updateProjectionMatrix(); }
+  if (T > E.up && T < E.arrive) R.shake = Math.max(R.shake || 0, 0.14 + Math.random() * 0.05);
   cineShake(dt, t);
   if (World.viewModel) World.viewModel.group.visible = true;
-  setFlash(T < 3.4 ? 0.9 : 0);
+  // your torch: on the gate; off in the blackout; jittering at the bottom of the ride
+  // your torch: low, on the gate, while the car's lamp is lit; off in the blackout; jittering when it's hit
+  setFlash(T >= E.black && T < E.up + 0.3 ? 0 : (Cinema.flicker > 0.4 && Math.random() < 0.4 ? 0.06 : 0.16) * (T > E.arrive + 0.5 ? 1.6 : 1));
+  R.flashTarget.position.set(0.05, -0.75, -3);
   updateMates(dt, t);
-  updateChudClient(dt, t);
   updateLightPool(dt, R.camera, Cinema.ca);
-  R.fear = T > 1 && T < 3.6 ? 0.8 : 0.2;
-  if (T >= 3.6) R.fade = 1;
+  R.fear = T > E.roar && T < E.black ? 0.85 : T > E.bang && T < E.fall + 1 ? 0.5 : T > E.knock1 ? 0.55 : damp(R.fear, 0.15, 1, dt);
+  if (T >= E.black && T < E.up) R.fade = 1;
+  else if (T < E.title) R.fade = damp(R.fade, 0, 5, dt);
+  else R.fade = 1;
+}
+// the ending's set comes down with everything else when you leave it
+function seizeEndingLeave() {
+  if (SHAFT.group) SHAFT.group.visible = false;
+  if (SHAFT.dial) SHAFT.dial.visible = false;
+  const D = World.locks ? World.locks.find((d) => d.lock.type === 'Z') : null;
+  if (D) { D.group.position.set(D.lock.x, 0, D.lock.z); D.group.rotation.z = 0; }
+  if (Chud.ov === _szOv) Chud.ov = null;
+}
+// the black card between levels: kicker, the name, a line under it
+function setNextCard(kick, a, b, note) {
+  setText($('nc-kick'), kick);
+  const h = $('nc-title'); h.textContent = '';
+  const dash = document.createElement('span'); dash.className = 'nc-dash'; dash.textContent = ' - ';
+  h.append(document.createTextNode(a), dash, document.createTextNode(b));
+  setText($('nc-note'), note);
+  $('next-card').hidden = true; $('next-card').className = 'fullscreen';
 }

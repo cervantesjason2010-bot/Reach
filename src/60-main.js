@@ -106,7 +106,7 @@ function disposeTree(o) {
   o.traverse((n) => { if (n.geometry && !shared.has(n.geometry) && !(n.geometry.userData && n.geometry.userData.ni)) n.geometry.dispose(); });
 }
 function resetLevelState() {
-  World.doorways = []; World.sparks = []; World.sparkFx = []; World.curtains = []; World.endCar = null; World.liftBulb = null; World.lairCovers = []; World.runs = null; World.genPos = null; World.digits = null; World.keypads = null;
+  World.doorways = []; World.sparks = []; World.sparkFx = []; World.curtains = []; World.endCar = null; World.liftBulb = null; World.lairCovers = []; World.runs = null; World.genPos = null; World.digits = null; World.keypads = null; World.bloodPools = [];
   Lift.ready = false; Lift.segs = [];
   OCC.cache.clear(); OCC.slot = []; OCC.mate = []; R.poolPicked = null;
   for (const u of WS.occPt.value) u.w = -1;
@@ -156,6 +156,8 @@ function enterRound(g) {
   closeNote(); hideDeath();
   resetEnding();
   Creature.inited = false; Creature.override = null; Game.scare = null; Game.corpses.clear(); Game.killLast = -1;
+  for (const m of World.bloodPools || []) if (m.parent) m.parent.remove(m);
+  World.bloodPools = [];
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
   if (g.ph === 'intro') { setMode('intro'); startIntro(); }
   else { Cinema.mode = null; setLetterbox(false); setMode('play'); }
@@ -451,8 +453,8 @@ function updatePlayCamera(dt, t) {
     let T = kl && kl.id === netMyId() && Game.gt !== undefined ? Game.gt - kl.t : -1;
     if (T > -0.6 && T < 0) T = 0;          // this machine's copy of the clock can trail the host's by a frame or two
     if (sc) sc.t += dt;
-    if (kl && kl.c && T >= 0 && T < CHUD_KILL) { chudKillCam(T, dt, t); return crd; }
-    if (kl && kl.c && sc && T >= CHUD_KILL) { Game.scare = null; R.camera.fov = 72; R.camera.updateProjectionMatrix(); Sound.voiceBoost(false); }
+    if (kl && kl.c && T >= 0 && T < beastKillLen(kl)) { beastKillCam(kl, T, dt, t); return crd; }
+    if (kl && kl.c && sc && T >= beastKillLen(kl)) { Game.scare = null; R.camera.fov = 72; R.camera.updateProjectionMatrix(); Sound.voiceBoost(false); }
     if (sc && T >= 0 && T < KILL_TOTAL && Creature.visible) {
       const head = Creature.headPos;
       cam.position.copy(KS.head);
@@ -607,17 +609,18 @@ function tickFrame(now) {
       if (!Chud.ready && Game.g.ca >= 8) chudBuildStep(3, R.scene);
       processGameEvents();
       tickKeypad();
-      if (Game.g.lv === 'l2') { updateChudKill(dt); } else { updateKill(dt); updateLairs(dt); }
+      // the level's monster is posed before anyone it is holding, and before the camera of whoever that is
+      if (levelHasBeast(Game.g.lv)) { updateCreature(dt, t, { mode: 'hidden' }, Game.L, R.camera.position); updateBeastClient(dt, t); updateBeastKill(dt); }
+      else { updateKill(dt); updateLairs(dt); }
       updateMates(dt, t);
       crd = updatePlayCamera(dt, t);
-      if (Game.g.lv === 'l2') { updateCreature(dt, t, { mode: 'hidden' }, Game.L, R.camera.position); updateChudClient(dt, t); }
-      else updateCreature(dt, t, Game.g.cr, Game.L, R.camera.position);
+      if (!levelHasBeast(Game.g.lv)) updateCreature(dt, t, Game.g.cr, Game.L, R.camera.position);
       updateHud(dt);
       ca = Math.max(0, areaAt(Game.L, R.camera.position.x, R.camera.position.z));
       break;
     }
     case 'end': if (Cinema.mode === 'ending') updateEnding(dt, t); else { R.fade = damp(R.fade, 1, 1, dt); } ca = Cinema.mode === 'ending' ? Cinema.ca : 9; break;
-    case 'debug': ca = Game.debugArea || 0; updateLightPool(dt, R.camera, ca); break;
+    case 'debug': ca = Game.debugArea || 0; if (Game.debugTick) Game.debugTick(dt, t); updateLightPool(dt, R.camera, ca); break;
   }
   if (Game.me && Game.g && (Game.mode === 'intro' || Game.mode === 'play' || Game.mode === 'end')) {
     const st = myStateObject();
@@ -640,8 +643,8 @@ function tickFrame(now) {
   }
   Creature.events.length = 0;
   // on B5 the threat is the Chud: how near, and whether it is coming
-  const seize = Game.mode === 'play' && Game.g && Game.g.lv === 'l2', threat = seize ? chudThreat() : 0;
-  Sound.updateMusic(dt, (crVisible && cr.mode === 'run' && crd < 30) || (seize && Game.g.ch && Game.g.ch.m === 'hunt' && threat > 0.15) ? 1 : 0);
+  const beast = Game.mode === 'play' && Game.g && levelHasBeast(Game.g.lv), threat = beast ? beastThreat() : 0;
+  Sound.updateMusic(dt, (crVisible && cr.mode === 'run' && crd < 30) || (beast && Game.g.ch && Game.g.ch.m === 'hunt' && threat > 0.15) ? 1 : 0);
   // your heart: faster the closer it is - and pounding, over everything, while it is listening for you
   if (Game.holdBreath > 0) Game.holdBreath -= dt;
   if (Game.mode === 'play' && Game.me && !Game.me.dead && (Game.holdBreath > 0 || (crVisible && crd < 11) || threat > 0.2)) {

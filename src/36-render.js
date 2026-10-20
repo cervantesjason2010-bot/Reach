@@ -57,7 +57,7 @@ void main(){ float s = 0.0, ws = 0.0, m = 0.0, wm = 0.0;
 const COMPOSITE_FRAG = AUTO_EXP + POST_SAFE + `
 uniform sampler2D tScene; uniform sampler2D tBloom0; uniform sampler2D tBloom1; uniform sampler2D tBloom2;
 uniform float time; uniform float exposure; uniform float bloomStrength;
-uniform float fear; uniform float flash; uniform float fade; uniform float saturation; uniform vec3 tint; uniform vec2 res; uniform float grain;
+uniform float fear; uniform float flash; uniform float fade; uniform float bleed; uniform float saturation; uniform vec3 tint; uniform vec2 res; uniform float grain;
 uniform float haze; uniform vec2 hazePos; uniform vec3 hazeColor;
 varying vec2 vUv;
 vec3 aces(vec3 x){ return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
@@ -86,6 +86,8 @@ void main(){
   float n = hash(floor(vUv * res) + fract(time) * 97.0);
   col += (n - 0.5) * grain * (1.0 + fear) * (1.0 - l * 0.6);
   col = mix(col, vec3(1.0), flash);
+  // blood in the eyes: the picture goes red and dark from the edges in
+  col = mix(col, vec3(dot(col, vec3(0.6, 0.3, 0.1)) * 1.4, 0.0, 0.0) + vec3(0.16, 0.0, 0.0) * (1.0 - length(c)), bleed * (0.55 + 0.45 * smoothstep(0.1, 0.7, length(c))));
   col *= 1.0 - fade;
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -167,7 +169,7 @@ function initRenderer(canvas) {
   const compMat = new THREE.ShaderMaterial({
     vertexShader: POST_VERT, fragmentShader: COMPOSITE_FRAG, depthTest: false, depthWrite: false,
     uniforms: { tAdapt: autoU.tAdapt, autoOn: autoU.autoOn, tScene: { value: null }, tBloom0: { value: null }, tBloom1: { value: null }, tBloom2: { value: null }, time: { value: 0 }, exposure: { value: 1 }, bloomStrength: { value: 0.5 }, fear: { value: 0 },
-      flash: { value: 0 }, fade: { value: 0 }, saturation: { value: 0.86 }, tint: { value: new THREE.Vector3(1, 1, 1) }, res: { value: new THREE.Vector2(1, 1) }, grain: { value: 0.04 },
+      flash: { value: 0 }, fade: { value: 0 }, bleed: { value: 0 }, saturation: { value: 0.86 }, tint: { value: new THREE.Vector3(1, 1, 1) }, res: { value: new THREE.Vector2(1, 1) }, grain: { value: 0.04 },
       haze: { value: 0 }, hazePos: { value: new THREE.Vector2(0.52, 0.47) }, hazeColor: { value: new THREE.Vector3(1, 0.95, 0.88) } },
   });
   // first-person hands are drawn in their own pass so the flashlight never blows them out
@@ -629,6 +631,7 @@ function renderFrame(t, dt = 0.016) {
   R.quad.material = R.compMat;
   u.tScene.value = R.rtScene.texture; u.tBloom0.value = B[0].a.texture; u.tBloom1.value = B[1].a.texture; u.tBloom2.value = B[2].a.texture;
   u.time.value = t; u.exposure.value = R.exposure; u.fear.value = R.fear; u.flash.value = R.whiteFlash; u.fade.value = R.fade;
+  R.bleed = Math.max(0, (R.bleed || 0) - dt * 0.7); u.bleed.value = clamp(R.bleed, 0, 1);
   u.haze.value = R.haze;
   r.setRenderTarget(null); r.render(R.quadScene, R.quadCam);
 }

@@ -350,6 +350,54 @@ const Sound = (() => {
         for (let i = 0; i < 26; i++) noiseHit(t + 0.06 + Math.random() * 1.4, 0.02 + Math.random() * 0.05, 'bandpass', 900 + Math.random() * 4200, 4, 0.06 + Math.random() * 0.16, pos, 0.5);
         tone(t, 30, 1.0, 'sine', 1.2, null, 19, 0); noiseHit(t, 0.8, 'lowpass', 70, 1, 1.3, null, 0);
         break; }
+      // ---- the Chud at work ----
+      // the jaw coming open further than a jaw should: a wet tearing, gristle creaking, the breath behind it
+      case 'jawOpen': { const P = far(pos, 4, 1.1);
+        const src = ctx.createBufferSource(); src.buffer = noise; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 3;
+        f.frequency.setValueAtTime(620, t); f.frequency.exponentialRampToValueAtTime(230, t + 0.85);
+        const g = gain(0); env(g, t, 0.15, 0.42, 0.4, 0.35); src.connect(f); f.connect(g); out(g, P, sfx, 0.5); src.start(t, Math.random()); src.stop(t + 1.1);
+        for (let i = 0; i < 7; i++) { const ct = t + 0.1 + i * rr(0.08, 0.13); noiseHit(ct, 0.03, 'bandpass', rr(900, 2400), 7, 0.25, P, 0.3); tone(ct, rr(120, 220), 0.06, 'square', 0.06, P, 70, 0.3); }
+        tone(t, 70, 0.9, 'sawtooth', 0.12, P, 52, 0.5);
+        break; }
+      // breath bubbling in its throat
+      case 'gurgle': { const P = far(pos, 4, 1.1);
+        for (let i = 0; i < 16; i++) { const ct = t + i * rr(0.03, 0.06), fq = rr(180, 520); tone(ct, fq, 0.05, 'sine', 0.14, P, fq * rr(1.3, 1.8), 0.4); }
+        noiseHit(t, 0.8, 'lowpass', 300, 1, 0.5, P, 0.5); break; }
+      // teeth closing through something: bone going, and wet
+      case 'bite': { const P = far(pos, 5, 1.0);
+        noiseHit(t, 0.08, 'highpass', 2200, 1, 1.0, P, 0.5);
+        for (let i = 0; i < 6; i++) { const ct = t + 0.01 + i * rr(0.018, 0.04); noiseHit(ct, 0.04, 'bandpass', rr(1400, 3200), 8, 0.7, P, 0.4); tone(ct, rr(200, 420), 0.05, 'square', 0.14, P, 80, 0.3); }
+        noiseHit(t + 0.02, 0.5, 'lowpass', 400, 1, 1.1, P, 0.6); tone(t, 60, 0.4, 'sine', 0.9, P, 30, 0.4);
+        squelch(t + 0.05, P, 1.0); duck(0.7, 0.1, 0.8);
+        break; }
+      // a weight coming down on a chest
+      case 'crunch': { const P = far(pos, 6, 1.0);
+        for (let i = 0; i < 9; i++) { const ct = t + i * rr(0.01, 0.03); noiseHit(ct, 0.05, 'bandpass', rr(900, 2600), 6, 0.6, P, 0.4); tone(ct, rr(150, 360), 0.05, 'square', 0.12, P, 60, 0.3); }
+        squelch(t + 0.03, P, 0.9);
+        break; }
+      case 'squelch': squelch(t, far(pos, 4, 1.1), 0.8); break;
+      // an old desk phone ringing somewhere down the hall, two bursts, nobody answering
+      case 'phoneRing': { const P = far(pos, 5, 1.0);
+        for (let b = 0; b < 2; b++) for (let i = 0; i < 20; i++) { const st = t + b * 0.6 + i * 0.022; tone(st, 1020, 0.02, 'square', 0.035, P, 0, 0.5, sfx, 0.002); tone(st + 0.011, 1260, 0.02, 'square', 0.03, P, 0, 0.5, sfx, 0.002); }
+        break; }
+      // a castor that hasn't been oiled since the war, pushed a little way and stopped
+      case 'squeak': { const P = far(pos, 4, 1.1), f0 = rr(1300, 1900);
+        for (let i = 0; i < 3; i++) tone(t + i * rr(0.16, 0.24), f0 * rr(0.94, 1.08), rr(0.07, 0.13), 'sawtooth', 0.02, P, f0 * rr(1.05, 1.2), 0.5);
+        break; }
+      // a single key on an out-of-tune upright, held down until it dies
+      case 'piano': { const P = far(pos, 5, 0.9), notes = [196, 220, 233, 262, 294, 311], f = notes[Math.floor(Math.random() * notes.length)];
+        for (const [m, v, d] of [[1, 0.09, 3.2], [2.003, 0.035, 2.2], [3.01, 0.018, 1.5], [1.006, 0.06, 3.0]]) tone(t, f * m, d, 'triangle', v, P, f * m * 0.998, 0.75, sfx, 0.004);
+        noiseHit(t, 0.03, 'bandpass', 2600, 2, 0.05, P, 0.4);
+        break; }
+      // an old lift's bell: one brass ding as the car settles at a floor
+      case 'bell': { const P = far(pos, 4, 1.0);
+        for (const [m, v, d] of [[1, 0.12, 2.6], [2.76, 0.04, 1.4], [5.4, 0.015, 0.6]]) tone(t, 1175 * m, d, 'sine', v, P, 1175 * m * 0.998, 0.6, sfx, 0.003);
+        noiseHit(t, 0.02, 'highpass', 3000, 1, 0.08, P, 0.3);
+        break; }
+      // the grandfather clock: a quarter chime, a little flat
+      case 'chime': { const P = far(pos, 6, 0.8);
+        [659, 523, 587, 392].forEach((f, i) => { tone(t + i * 0.7, f, 2.2, 'sine', 0.08, P, f * 0.997, 0.8); tone(t + i * 0.7, f * 2.76, 0.9, 'sine', 0.02, P, 0, 0.8); });
+        break; }
       // a slab of steel coming down on concrete, and skidding
       case 'clatter': { const P = pos && { x: pos.x, y: pos.y, z: pos.z, ref: 7, roll: 1.0 };
         noiseHit(t, 0.35, 'lowpass', 240, 1, 1.4, P, 0.8); tone(t, 74, 0.4, 'sine', 0.8, P, 40, 0.5);
@@ -358,6 +406,15 @@ const Sound = (() => {
         { const src = ctx.createBufferSource(); src.buffer = noise; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(1500, t + 0.05); f.frequency.linearRampToValueAtTime(700, t + 0.8);
           const g = gain(0); env(g, t + 0.05, 0.02, 0.35, 0.3, 0.4); src.connect(f); f.connect(g); out(g, P, sfx, 0.5); src.start(t + 0.05); src.stop(t + 0.9); }
         break; }
+    }
+  }
+
+  // wet: something soft giving way
+  function squelch(t, P, v) {
+    for (let i = 0; i < 4; i++) {
+      const src = ctx.createBufferSource(); src.buffer = noise; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 8; const st = t + i * rr(0.03, 0.08);
+      f.frequency.setValueAtTime(rr(300, 600), st); f.frequency.exponentialRampToValueAtTime(rr(1200, 2400), st + 0.07); f.frequency.exponentialRampToValueAtTime(rr(200, 400), st + 0.2);
+      const g = gain(0); env(g, st, 0.01, 0.5 * v, 0.05, 0.15); src.connect(f); f.connect(g); out(g, P, sfx, 0.4); src.start(st, Math.random() * 2); src.stop(st + 0.3);
     }
   }
 

@@ -103,6 +103,8 @@ function buildLockDoor(L, lock) {
     }
   } else if (lock.type === 'N') {
     D.parts = buildKeypadDoor(L, lock, g, W);
+  } else if (lock.type === 'Z' && THEMES[L.areas[lock.area].theme].liftDoors) {
+    D.parts = THEMES[L.areas[lock.area].theme].liftDoors(g, W);
   } else if (lock.type === 'Z') {
     const left = liftDoorLeaf(W, 1), right = liftDoorLeaf(W, -1);
     left.position.set(-W / 4, 0, 0.05); right.position.set(W / 4, 0, 0.05);
@@ -139,7 +141,8 @@ function updateLockDoor(D, state, dt, g, i) {
   } else if (D.lock.type === 'Z') {
     p.left.position.x = -p.W / 4 - o * p.W * 0.48;
     p.right.position.x = p.W / 4 + o * p.W * 0.48;
-    p.lamp.material.color.setHex(state && state.ready ? 0x3cff7a : 0xff2a1a);
+    if (p.lamp) p.lamp.material.color.setHex(state && state.ready ? 0x3cff7a : 0xff2a1a);
+    if (p.update) p.update(o, state);
   } else {
     p.panel.position.y = o * (p.rise || 2.35);
   }
@@ -259,6 +262,8 @@ function buildDevice(L, d) {
     wheel.add(rim);
     for (let k = 0; k < 3; k++) { const sp = new THREE.Mesh(boxGeo(0.48, 0.03, 0.03), plainMat(0xa0281c, { roughness: 0.5, metalness: 0.4 })); sp.rotation.z = k * Math.PI / 3; wheel.add(sp); }
     g.add(wheel); D.wheel = wheel;
+  } else if (d.type === 'u' && THEMES[L.areas[d.area].theme].callButton) {
+    THEMES[L.areas[d.area].theme].callButton(g, D);
   } else if (d.type === 'u') {
     const box = new THREE.Mesh(boxGeo(0.3, 0.5, 0.08), mat('steel')); box.position.set(0, 1.3, 0.04); g.add(box);
     const btn = new THREE.Mesh(cylGeo(0.07, 0.07, 0.04, 16), new THREE.MeshBasicMaterial({ color: 0xffb02e }));

@@ -126,7 +126,7 @@ function seizeArea4(rnd) { // The Old Wing: a panelled hall from long before the
   g.floor(4, 13, 13, 19); g.set(9, 12, '.');
   g.floor(16, 13, 27, 19); g.set(21, 12, '.');
   g.put([[3, 3], [3, 4], [3, 5], [3, 6], [12, 3], [12, 4], [12, 5], [12, 6]], '$');
-  for (const z of [3, 5]) for (let x = 18; x <= 25; x++) if (x !== 21) g.set(x, z, 'b');
+  for (const z of [4, 6]) for (let x = 18; x <= 25; x++) if (x !== 21) g.set(x, z, 'b');
   g.put([[6, 15], [7, 15]], 't'); g.set(6, 16, 'h'); g.put([[13, 14], [13, 15]], '$');
   // a shelter in the south rooms: the old porter's lodge
   g.fill(15, 12, 28, 20, '#'); g.fill(16, 13, 27, 19, 's'); g.set(21, 12, 'S');
@@ -241,7 +241,9 @@ function chudPath(L, sx, sz, tx, tz) {
 }
 
 // ---------- the host's Chud ----------
-const CHUD_WALK = 0.85, CHUD_HUNT = 1.75, CHUD_GRAB = 1.75, CHUD_EYE = 2.35;
+// it roams at a fast heavy walk now, and when it has seen you it comes at a lumbering run you can only just
+// outpace - for as long as your legs hold out
+const CHUD_WALK = 1.45, CHUD_HUNT = 2.95, CHUD_GRAB = 1.85, CHUD_EYE = 2.5;
 // Can it see this player? Not by sound - it hears nothing. A torch is a beacon from across a hall; a torch in
 // its face from further still. In the dark it has to all but walk into you.
 function chudSees(g, p, L, open) {
@@ -302,7 +304,7 @@ function chudTick(g, living, players, dt, open) {
     return;
   }
   if (best) {
-    if (cs.state !== 'hunt' && cs.state !== 'notice') { cs.state = 'notice'; cs.timer = 0.9; hostEvent(g, 'chudSaw', { x: r2(ch.x), z: r2(ch.z), who: best.id }); }
+    if (cs.state !== 'hunt' && cs.state !== 'notice') { cs.state = 'notice'; cs.timer = 0.75; hostEvent(g, 'chudSaw', { x: r2(ch.x), z: r2(ch.z), who: best.id }); }
     cs.target = best.id; cs.last = { x: best.x, z: best.z };
   }
   // within reach of someone it can see, or has walked right into: it takes them
@@ -317,7 +319,7 @@ function chudTick(g, living, players, dt, open) {
     if (cs.last) ch.y = dampAngle(ch.y, Math.atan2(cs.last.x - ch.x, cs.last.z - ch.z), 3, dt);
     if (cs.timer <= 0) { cs.state = 'hunt'; cs.path = null; }
   } else if (cs.state === 'hunt') {
-    goal = cs.last; speed = CHUD_HUNT;
+    goal = cs.last; speed = CHUD_HUNT * (cs.last && dist2(ch.x, ch.z, cs.last.x, cs.last.z) < 4 ? 1.12 : 1);
     if (!best && cs.last && dist2(ch.x, ch.z, cs.last.x, cs.last.z) < 1.2) { cs.state = 'search'; cs.timer = 5 + Math.random() * 3; cs.path = null; }
   } else if (cs.state === 'search') {
     cs.timer -= dt;
@@ -328,7 +330,7 @@ function chudTick(g, living, players, dt, open) {
     if (cs.timer <= 0) { cs.state = 'wander'; cs.goal = chudWanderPoint(g, living, cs.area); cs.path = null; }
   } else if (cs.state === 'wander') {
     goal = cs.goal; speed = CHUD_WALK;
-    if (!goal || dist2(ch.x, ch.z, goal.x, goal.z) < 1.0) { cs.state = 'idle'; cs.timer = 3 + Math.random() * 5; }
+    if (!goal || dist2(ch.x, ch.z, goal.x, goal.z) < 1.0) { cs.state = 'idle'; cs.timer = 1.2 + Math.random() * 2.6; }
   }
   ch.s = 0;
   if (goal && speed > 0) chudMove(g, cs, goal, speed, dt);
@@ -344,7 +346,7 @@ function chudWanderPoint(g, living, area) {
   const near = living.filter((p) => areaAt(L, p.x, p.z) === area);
   for (let k = 0; k < 40; k++) {
     let x, z;
-    if (near.length && Math.random() < 0.55) { const p = near[Math.floor(Math.random() * near.length)]; x = p.x + (Math.random() - 0.5) * 14; z = p.z + (Math.random() - 0.5) * 14; }
+    if (near.length && Math.random() < 0.7) { const p = near[Math.floor(Math.random() * near.length)]; x = p.x + (Math.random() - 0.5) * 12; z = p.z + (Math.random() - 0.5) * 12; }
     else { x = A.offX + 1 + Math.random() * (A.w - 2); z = A.offZ + 1 + Math.random() * (A.h - 2); }
     const gx = Math.floor(x), gz = Math.floor(z);
     if (inGrid(L, gx, gz) && grid[gz * L.W + gx] && L.area[gz * L.W + gx] === area && (here < 0 || L.chwComp[gz * L.W + gx] === here)) return { x: gx + 0.5, z: gz + 0.5 };
@@ -363,7 +365,7 @@ function chudMove(g, cs, goal, speed, dt) {
   if (d < 0.35) { cs.pi++; return; }
   // it turns slowly, and doesn't walk where it isn't facing
   const want = Math.atan2(dx, dz);
-  ch.y = dampAngle(ch.y, want, speed > 1 ? 2.4 : 1.6, dt);
+  ch.y = dampAngle(ch.y, want, speed > 2 ? 3.4 : 2.4, dt);
   const face = Math.cos(wrapAngle(want - ch.y));
   const v = speed * clamp(face, 0.15, 1);
   const nx = ch.x + Math.sin(ch.y) * v * dt, nz = ch.z + Math.cos(ch.y) * v * dt;
@@ -376,27 +378,28 @@ function chudTake(g, p) {
   ch.m = 'grab'; ch.s = 0; ch.y = r2(Math.atan2(p.x - ch.x, p.z - ch.z));
   g.k[p.id] = Math.max(0.01, r2(g.t)); g.kc = (g.kc || 0) + 1;
   dropItems(g, p);
-  g.kl = { id: p.id, t: r2(g.t), c: 1, x: r2(ch.x), z: r2(ch.z), y: ch.y };
+  g.kl = { id: p.id, t: r2(g.t), c: 1, x: r2(ch.x), z: r2(ch.z), y: ch.y, vx: r2(p.x), vz: r2(p.z) };
   hostEvent(g, 'chudGrab', { who: p.id, x: r2(p.x), z: r2(p.z) });
 }
 
 // ---------- every machine: drawing it, hearing it, feeling it ----------
-const CHUD_KILL = 3.4;
 const CS = { x: 0, z: 0, y: 0, init: false, gruntT: 3, nearT: 0, lastM: '' };
 function updateChudClient(dt, t) {
   const g = Game.g, ch = g && g.ch;
   if (!Chud.ready || !ch || ch.m === 'hidden' || g.lv !== 'l2') { setChudVisible(false); Sound.chudBreath({ x: 0, y: 0, z: 0 }, false); return; }
-  if (!CS.init || dist2(CS.x, CS.z, ch.x, ch.z) > 6) { CS.x = ch.x; CS.z = ch.z; CS.y = ch.y; CS.init = true; }
+  if (!CS.init || dist2(CS.x, CS.z, ch.x, ch.z) > 6) { CS.x = ch.x; CS.z = ch.z; CS.y = ch.y; CS.init = true; Chud.snap = true; }
   CS.x = damp(CS.x, ch.x, 8, dt); CS.z = damp(CS.z, ch.z, 8, dt); CS.y = dampAngle(CS.y, ch.y, 8, dt);
+  // while it has someone, it is exactly where it took them, facing them
+  const kl = g.kl, kT = kl && kl.c === 1 && Game.gt !== undefined ? Game.gt - kl.t : -1, killing = kT >= 0 && kT < CHUD_KILL;
+  if (killing) { CS.x = kl.x; CS.z = kl.z; CS.y = kl.y; }
   const cam = R.camera.position, dCam = dist2(cam.x, cam.z, CS.x, CS.z);
   setChudVisible(dCam < 42);
-  Object.assign(Chud, { x: CS.x, z: CS.z, y: 0, yaw: CS.y, speed: ch.s, mode: ch.m });
+  Object.assign(Chud, { x: CS.x, z: CS.z, y: 0, yaw: CS.y, speed: killing ? 0 : ch.s, mode: ch.m });
   Chud.look = ch.lx || ch.lz ? { x: ch.lx, y: 1.5, z: ch.lz } : null;
-  // the grab: arms up, hands shut on whoever it has - then down hard
-  const kl = g.kl, kT = kl && kl.c && Game.gt !== undefined ? Game.gt - kl.t : -1, killing = kT >= 0 && kT < CHUD_KILL;
-  Chud.reach = damp(Chud.reach || 0, killing ? (kT < 2.25 ? 1 : 0.1) : 0, killing ? (kT < 2.25 ? 6 : 14) : 2, dt);
-  Chud.grip = killing && kT < 2.45 ? clamp((kT - 0.35) * 3, 0, 1) : undefined;
-  if (killing) { const v = mateOrMe(kl.id); if (v) Chud.look = { x: v.x, y: 2.0, z: v.z }; }
+  Chud.reach = 0; Chud.grip = undefined;
+  if (killing) { Chud._kl = kl; Chud._kT = kT; chudKillOverrides(kl, kT); }
+  else { Chud.ov = null; Chud._kl = null; }
+  Chud.gore = Math.max(0, Chud.gore - dt / 150);
   chudPose(dt, t);
   // every step: a bang, the floor jumping, dust where the foot came down and grit out of the ceiling
   for (const ev of Chud.events) {
@@ -411,14 +414,14 @@ function updateChudClient(dt, t) {
     R.flicker = Math.max(R.flicker || 0, felt * 0.6);
   }
   Chud.events.length = 0;
-  // the grunting, all the time it is moving; more when it has seen you
-  if (ch.m !== CS.lastM) { if (ch.m === 'hunt') { chudGrunt(); Sound.chudGrunt({ x: CS.x, y: 2.2, z: CS.z }, true); CS.gruntT = 1.5; } CS.lastM = ch.m; }
+  // the grunting, all the time it is moving; a roar when it has seen you
+  if (ch.m !== CS.lastM) { if (ch.m === 'hunt' && !killing) { chudGrunt(); Chud.gruntT = 1.2; Sound.chudGrunt({ x: CS.x, y: 2.2, z: CS.z }, true); CS.gruntT = 1.5; } CS.lastM = ch.m; }
   CS.gruntT -= dt;
-  if (CS.gruntT <= 0) {
-    CS.gruntT = ch.m === 'hunt' ? 1.6 + Math.random() * 1.8 : ch.m === 'walk' ? 2.8 + Math.random() * 3 : 5 + Math.random() * 6;
+  if (CS.gruntT <= 0 && !killing) {
+    CS.gruntT = ch.m === 'hunt' ? 1.4 + Math.random() * 1.6 : ch.m === 'walk' ? 2.4 + Math.random() * 2.6 : 4.5 + Math.random() * 5;
     if (ch.m !== 'idle' || Math.random() < 0.5) { chudGrunt(); Sound.chudGrunt({ x: CS.x, y: 2.2, z: CS.z }, false); }
   }
-  Sound.chudBreath({ x: CS.x, y: 2.2, z: CS.z }, dCam < 30, ch.m === 'hunt' ? 1.6 : 1);
+  Sound.chudBreath({ x: CS.x, y: 2.2, z: CS.z }, dCam < 30, ch.m === 'hunt' || killing ? 1.7 : 1);
 }
 function mateOrMe(id) {
   if (Game.me && id === netMyId()) return Game.me;
@@ -584,101 +587,6 @@ function keypadKey(e) {
   return true;
 }
 
-// ---------- when it catches someone ----------
-// It picks you up by the head and shoulders, holds you up to its face and squeezes, then drives you into the floor.
-const CK = { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), axis: new THREE.Vector3(0, 1, 0), face: new THREE.Vector3(1, 0, 0), live: 1, phase: 2 };
-const _ckA = new THREE.Vector3(), _ckB = new THREE.Vector3(), _ckH = new THREE.Vector3(), _ckL = new THREE.Vector3();
-function chudGripPoint(out) {
-  if (!Chud.ready) return out.set(Chud.x, 2, Chud.z);
-  Chud.bones.fingL.getWorldPosition(_ckA); Chud.bones.fingR.getWorldPosition(_ckB);
-  return out.addVectors(_ckA, _ckB).multiplyScalar(0.5);
-}
-// where the body lies once it is done: on its back at its feet
-function chudDropPose(kl, out) {
-  const fx = Math.sin(kl.y), fz = Math.cos(kl.y);
-  out.hip.set(kl.x + fx * 1.25, 0.13, kl.z + fz * 1.25);
-  out.head.set(out.hip.x + fx * 0.75, 0.14, out.hip.z + fz * 0.75);
-  out.feet.set(out.hip.x - fx * 0.85 + fz * 0.15, 0.1, out.hip.z - fz * 0.85 - fx * 0.15);
-  out.face.set(0, 1, 0); out.axis.set(-fx, 0, -fz);
-  return out;
-}
-function chudKillBody(kl, T) {
-  const grip = chudGripPoint(_ckH);
-  const sw = Math.sin(T * 9) * 0.06;
-  if (T < 2.3) {
-    // hanging from its hands by the head and shoulders, kicking
-    CK.head.copy(grip); CK.head.y -= 0.05;
-    CK.hip.set(grip.x + sw, grip.y - 0.62, grip.z - sw * 0.5);
-    CK.feet.set(grip.x - sw * 1.5, Math.max(0.05, grip.y - 1.5), grip.z + sw);
-    CK.face.set(Chud.x - grip.x, 0, Chud.z - grip.z).normalize();
-    CK.axis.set(0, 1, 0); CK.live = 1; CK.phase = 2;
-    return CK;
-  }
-  // thrown down: from its hands to the floor in a fraction of a second
-  const k = smooth01((T - 2.3) / 0.25);
-  const hang = { head: grip.clone(), hip: new THREE.Vector3(grip.x, grip.y - 0.62, grip.z), feet: new THREE.Vector3(grip.x, Math.max(0.05, grip.y - 1.5), grip.z) };
-  const lie = chudDropPose(kl, { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), face: new THREE.Vector3(), axis: new THREE.Vector3() });
-  CK.head.lerpVectors(hang.head, lie.head, k); CK.hip.lerpVectors(hang.hip, lie.hip, k); CK.feet.lerpVectors(hang.feet, lie.feet, k);
-  CK.face.set(0, 1, 0); CK.live = Math.max(0, 1 - (T - 2.3) * 2); CK.phase = 4;
-  return CK;
-}
-// the beats of it, heard by everyone near enough, and the body left behind after
-function updateChudKill(dt) {
-  const g = Game.g, kl = g && g.kl;
-  if (!kl || !kl.c || Game.gt === undefined) return;
-  const T = Game.gt - kl.t;
-  if (Game.ckId !== kl.t) { Game.ckId = kl.t; Game.ckLast = -1; }
-  if (T < 0) return;
-  const crossed = (at) => Game.ckLast < at && T >= at;
-  const mine = kl.id === netMyId(), pos = { x: kl.x, y: 1.9, z: kl.z };
-  const d = Game.me ? dist2(Game.me.x, Game.me.z, kl.x, kl.z) : 99;
-  if (crossed(0.4)) Sound.chudGrunt(pos, true);
-  if (crossed(1.15)) { Sound.play('crack', pos); if (mine) R.hit = Math.max(R.hit || 0, 1.2); }
-  if (crossed(1.7)) Sound.play('crack', pos);
-  if (crossed(2.5)) {
-    const lie = chudDropPose(kl, { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), face: new THREE.Vector3(), axis: new THREE.Vector3() });
-    Sound.play('slam', { x: lie.hip.x, y: 0.2, z: lie.hip.z }); Sound.chudStep({ x: lie.hip.x, y: 0.2, z: lie.hip.z }, 1.3, mine ? 1 : clamp(1 - d / 14, 0, 1));
-    debrisBurst(lie.hip.x, 0.1, lie.hip.z, 'f', 1.1);
-    if (mine) { R.shake = Math.max(R.shake || 0, 2.4); R.hit = 2; R.whiteFlash = 0.12; } else R.shake = Math.max(R.shake || 0, clamp(1.3 - d * 0.1, 0, 1.3));
-  }
-  Game.ckLast = T;
-  if (T > CHUD_KILL && g.k[kl.id] && !Game.corpses.has(kl.id)) {
-    const lie = chudDropPose(kl, { head: new THREE.Vector3(), hip: new THREE.Vector3(), feet: new THREE.Vector3(), face: new THREE.Vector3(), axis: new THREE.Vector3() });
-    Game.corpses.set(kl.id, Object.assign(lie, { live: 0, phase: 4, t: kl.t }));
-  }
-}
-// what the one it has sees: lifted to its face, its jaw working, the squeeze, the floor coming up
-function chudKillCam(T, dt, t) {
-  const cam = R.camera, grip = chudGripPoint(_ckH);
-  Chud.bones.head.getWorldPosition(_ckL); _ckL.y -= 0.02;
-  const sc = Game.scare;
-  if (T < 0.4) {
-    const k = smooth01(T / 0.4);
-    cam.position.lerpVectors(sc ? sc.from : grip, grip, k);
-    cam.lookAt(_ckL);
-  } else if (T < 2.3) {
-    cam.position.copy(grip).addScaledVector(_ckA.subVectors(grip, _ckL).setY(0).normalize(), 0.12);
-    cam.position.y += Math.sin(T * 11) * 0.02;
-    cam.lookAt(_ckL);
-    cam.rotateZ(Math.sin(T * 3.1) * 0.12);
-  } else {
-    // slammed down: the view drops to the floor and stays there, looking up at it
-    const k = smooth01((T - 2.3) / 0.22);
-    const floor = _ckA.set(Chud.x + Math.sin(Chud.yaw) * 1.25, 0.25, Chud.z + Math.cos(Chud.yaw) * 1.25);
-    cam.position.lerpVectors(grip, floor, k);
-    cam.lookAt(_ckL);
-    cam.rotateZ(0.5 * k);
-    if (T > CHUD_KILL - 0.6) R.fade = Math.min(1, (T - (CHUD_KILL - 0.6)) / 0.5);
-  }
-  const jit = 0.03 + (R.hit || 0) * 0.02;
-  cam.position.x += (Math.random() - 0.5) * jit; cam.position.y += (Math.random() - 0.5) * jit; cam.position.z += (Math.random() - 0.5) * jit;
-  if (cam.fov !== 64) { cam.fov = 64; cam.updateProjectionMatrix(); }
-  R.fear = 1;
-  setFlash(T < 0.4 ? 1 : Math.random() < 0.4 ? 0.6 : 0.08);
-  R.flashThrow = 1.2; R.bounce.intensity = 0;
-  if (World.viewModel) World.viewModel.group.visible = false;
-}
-
 // ---------- the landing: the car you came down in ----------
 SET_PIECES.landing = (L, B, a, ai, r) => { buildLiftCar(L, B); };
 
@@ -696,3 +604,15 @@ const INTRO_LINES = {
 // the floors the car passes on the way down, and what the dial reads
 function liftFloorLabel(n) { return Game.levelKey === 'l2' ? ['B5', '', 'B4'][n] : 'B' + (4 - n); }
 function introFloorText(stopped, level) { return Game.levelKey === 'l2' ? (stopped ? 'Stopped · B-5' : 'Descending · ' + (level >= 4 ? 'B-5' : 'B-4')) : (stopped ? 'Stopped · ' : 'Descending · ') + 'B-' + level; }
+
+// ---------- whichever of them this level has ----------
+// B5 has the Chud; A1 has the Pale. Both are beasts (45-beast.js) with a kill of their own; this is how the
+// rest of the game asks about whichever one is here without caring which.
+function levelHasBeast(lv) { return lv === 'l2' || lv === 'l3'; }
+function beastKillLen(kl) { return kl && kl.c === 2 ? PALE_KILL : CHUD_KILL; }
+function beastKillBody(kl, T) { return kl && kl.c === 2 ? paleKillBody(kl, T) : chudKillBody(kl, T); }
+function beastKillCam(kl, T, dt, t) { if (kl.c === 2) paleKillCam(T, dt, t); else chudKillCam(T, dt, t); }
+function updateBeastClient(dt, t) { if (Game.g.lv === 'l3') updatePaleClient(dt, t); else updateChudClient(dt, t); }
+function updateBeastKill(dt) { if (Game.g.lv === 'l3') updatePaleKill(dt); else updateChudKill(dt); }
+function beastThreat() { return Game.g && Game.g.lv === 'l3' ? paleThreat() : chudThreat(); }
+

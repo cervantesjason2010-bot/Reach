@@ -393,7 +393,7 @@ function onLocalDeath() {
   // no jump scare: whoever it catches lives through the whole drag and beating, mic open and a little louder
   Game.scare = { t: 0, n: 0, from: R.camera.position.clone(), x: Game.me.x, z: Game.me.z };
   Sound.voiceBoost(true);
-  showDeath(Game.g && Game.g.lv === 'l2' ? CHUD_KILL * 1000 + 200 : Creature.visible ? KILL_TOTAL * 1000 + 100 : 1300);
+  showDeath(Game.g && levelHasBeast(Game.g.lv) ? beastKillLen(Game.g.kl) * 1000 + 200 : Creature.visible ? KILL_TOTAL * 1000 + 100 : 1300);
 }
 
 // ---------- teammates ----------
@@ -425,11 +425,11 @@ function updateMates(dt, t) {
     if (!m.dead) Game.corpses.delete(p.id);
     // Dead is not gone. While it has them, everyone sees what it is doing to them; afterwards, they lie where
     // it left them until the team brings them back.
-    const kl = g.kl, chudKill = m.dead && kl && kl.c && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < CHUD_KILL;
-    const killing = chudKill || (m.dead && kl && !kl.c && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
+    const kl = g.kl, beastKill = m.dead && kl && kl.c && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < beastKillLen(kl);
+    const killing = beastKill || (m.dead && kl && !kl.c && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
     const corpse = m.dead && !killing ? Game.corpses.get(p.id) : null;
     m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser)) && (!m.dead || !!killing || !!corpse);
-    if (killing) poseBody(m.h, chudKill ? chudKillBody(kl, Game.gt - kl.t) : KS, t, p.id.length);
+    if (killing) poseBody(m.h, beastKill ? beastKillBody(kl, Game.gt - kl.t) : KS, t, p.id.length);
     else if (corpse) poseBody(m.h, corpse, t, p.id.length);
     else {
       m.h.root.position.set(m.x, (cellFlag(L, L.water, m.x, m.z) ? -0.3 : 0) + floorY(L, m.x, m.z), m.z);
@@ -451,7 +451,8 @@ function updateMates(dt, t) {
     // the living hear every second of it
     const dying = m.dead && g && g.k[p.id] > 0 && g.t - g.k[p.id] < KILL_TOTAL;
     // their voice comes from wherever their head is - which, while it has them, is in its hand
-    const vx = killing ? KS.head.x : m.x, vy = killing ? KS.head.y : 1.6, vz = killing ? KS.head.z : m.z;
+    const kh = beastKill ? beastKillBody(kl, Game.gt - kl.t).head : KS.head;
+    const vx = killing ? kh.x : m.x, vy = killing ? kh.y : 1.6, vz = killing ? kh.z : m.z;
     if (Game.me) Sound.placeVoice(p.id, vx, vy, vz, !lineOfSight(L, Game.me.x, Game.me.z, vx, vz, openLocksOf(g)), !m.dead || dying || (Game.me && Game.me.dead));
   }
   for (; li < R.mates.length; li++) { R.mates[li].light.intensity = 0; occMate(li, R.mates[li].light, false); }

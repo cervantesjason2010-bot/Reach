@@ -240,17 +240,17 @@ function buildWorld(L) {
     const rnd = rndFor(gx, gz);
     if (isCarCell(L, gx, gz)) continue;
     const isLift = c === 'z' || c === 'Z' || (ai === 0 && c === '@');
-    const wLo = mat(isLift ? 'plate' : th.lo), wHi = mat(isLift ? 'plate' : th.hi);
+    const wLo = mat(isLift ? th.liftWall || 'plate' : th.lo), wHi = mat(isLift ? th.liftWall || 'plate' : th.hi);
     if (kind === 'glass' || kind === 'bars') { buildPartition(B, L, gx, gz, kind, th, ceil); continue; }
     if (kind !== 'open') continue;
     const water = !!L.water[i];
     const fy = water ? -0.4 : 0;
     // floor
-    const fm = water ? mat('floorWet') : isLift ? mat(World.areas[ai].meta.theme === 'lift' ? 'tread' : 'grate') : (th.floor === 'carpet' && isCorridorCell(L, gx, gz) ? mat('tilefloor') : mat(th.floor));
+    const fm = water ? mat('floorWet') : isLift ? mat(th.liftFloor || (World.areas[ai].meta.theme === 'lift' ? 'tread' : 'grate')) : (th.floor === 'carpet' && isCorridorCell(L, gx, gz) ? mat('tilefloor') : mat(th.floor));
     B.quad(fm, [gx, fy, gz + 1], [gx + 1, fy, gz + 1], [gx + 1, fy, gz], [gx, fy, gz], 0, 1, 0,
       [[gx / TEX_M, (gz + 1) / TEX_M], [(gx + 1) / TEX_M, (gz + 1) / TEX_M], [(gx + 1) / TEX_M, gz / TEX_M], [gx / TEX_M, gz / TEX_M]]);
     // ceiling (a missing tile leaves a hole into the dark above)
-    const cm = isLift ? mat('plateDark') : mat(th.ceil);
+    const cm = isLift ? mat(th.liftCeil || 'plateDark') : mat(th.ceil);
     const cs = th.ceil === 'panel' ? 1.2 : TEX_M;
     if (!holes.has(i)) {
       B.quad(cm, [gx, ceil, gz], [gx + 1, ceil, gz], [gx + 1, ceil, gz + 1], [gx, ceil, gz + 1], 0, -1, 0,
@@ -279,7 +279,8 @@ function buildWorld(L) {
       } else if (nk === 'solid') {
         const col = inGrid(L, nx, nz) && L.ch[k(nx, nz)] === 'I';
         const band = 1.05;
-        const lo = col ? mat('concrete', { color: 0xb8b4aa }) : wLo, hi = col ? mat('concrete', { color: 0xb8b4aa }) : wHi;
+        // columns: bare concrete with hazard paint, unless the theme dresses them as part of its rooms
+        const lo = col ? (th.colLo ? mat(th.colLo) : mat('concrete', { color: 0xb8b4aa })) : wLo, hi = col ? (th.colHi ? mat(th.colHi) : mat('concrete', { color: 0xb8b4aa })) : wHi;
         face(fy, Math.min(band, ceil), lo); face(Math.min(band, ceil), ceil + (holes.has(i) ? 0.75 : 0), hi);
         if (!water) {
           const mx = (ax + bx) / 2, mz = (az + bz) / 2;
@@ -288,7 +289,7 @@ function buildWorld(L) {
           const base = th.floor === 'carpet' || th.floor === 'tilefloor' ? plainMat(0x1d1e20, { roughness: 0.55 }) : mat('steelDark');
           if (!col) B.add(base, boxGeo(bxw, th.floor === 'carpet' ? 0.1 : 0.12, bzw), xform(mx - dx * off, 0.055, mz - dz * off));
           if (th.rail && ceil > 2 && !col) B.add(mat('wood', { color: 0x6a5240 }), cboxGeo(bxw, 0.07, bzw + (along === 'x' ? 0.01 : 0), 0.008), xform(mx - dx * off, 1.05, mz - dz * off));
-          if ((th.band && !isLift && ceil > 2) || col) {
+          if ((th.band && !isLift && ceil > 2) || (col && !th.colLo)) {
             const hm = hazardMat();
             const ua = (along === 'x' ? ax : az) * 0.5, ub = (along === 'x' ? bx : bz) * 0.5;
             const o = 0.012, y0 = col ? 0 : 0.86, y1 = col ? 1.2 : 1.04;
