@@ -636,6 +636,8 @@ function tickFrame(now) {
     case 'end': if (Cinema.mode === 'ending') updateEnding(dt, t); else { R.fade = damp(R.fade, 1, 1, dt); } ca = Cinema.mode === 'ending' ? Cinema.ca : 9; break;
     case 'debug': ca = Game.debugArea || 0; if (Game.debugTick) Game.debugTick(dt, t); updateLightPool(dt, R.camera, ca); break;
   }
+  // the lobby's off-centre framing is only for the lobby
+  if (Game.mode !== 'lobby' && R.camera.view && R.camera.view.enabled) R.camera.clearViewOffset();
   if (Game.me && Game.g && (Game.mode === 'intro' || Game.mode === 'play' || Game.mode === 'end')) {
     const st = myStateObject();
     if (Net.mode === 'solo') Net.myState = st; else netPublish(st);
@@ -693,30 +695,31 @@ async function boot2() {
   if (booted) return;
   booted = true;
   Sound.init(); Sound.setMaster(Settings.vol); Sound.setTheme('title');
-  $('gate-go').disabled = true;
-  const say = (s) => setText($('loading'), s);
+  $('gate-go').disabled = true; $('gate-go').hidden = true; $('gate-load').hidden = false;
+  const bar = $('gate-bar'), prog = (f) => { bar.style.width = (clamp(f, 0, 1) * 100).toFixed(1) + '%'; };
+  const say = (s, f) => { setText($('loading'), s); if (f !== undefined) prog(f); };
   const wait = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
   try {
-    say('Waking the generators…'); await wait();
+    say('Waking the generators…', 0.04); await wait();
     initRenderer($('view'));
     R.exposure = Settings.bright;
     applyGraphics(); applyRenderDistance();
     const names = Object.keys(GTEX_RECIPES);
-    for (let i = 0; i < names.length; i++) { say('Pouring concrete · ' + (i + 1) + '/' + names.length); await wait(); getTexSet(names[i]); }
-    say('Drawing ten floors of plans…'); await wait();
+    for (let i = 0; i < names.length; i++) { say('Pouring concrete · ' + (i + 1) + '/' + names.length, 0.06 + 0.5 * i / names.length); await wait(); getTexSet(names[i]); }
+    say('Drawing ten floors of plans…', 0.58); await wait();
     Game.levelKey = 'l1';
     Game.L = assembleLevel(buildAllMaps('l1'));
     patchLiftCells(Game.L);
     buildLevelField(Game.L);
-    say('Building the facility…'); await wait();
+    say('Building the facility…', 0.66); await wait();
     buildWorld(Game.L);
     buildDynamic(Game.L);
     R.scene.add(World.group);
-    say('Something is waking up…'); await wait();
+    say('Something is waking up…', 0.8); await wait();
     buildCreature(R.scene);
     World.viewModel = buildViewModel();
     drawScareFace();
-    say('Warming up the lights…'); await wait();
+    say('Warming up the lights…', 0.9); await wait();
     World.areas.forEach((a) => { a.group.visible = true; });
     setCreatureVisible(true);
     try { R.renderer.compile(R.scene, R.camera); } catch (e) { /* compiled lazily instead */ }
@@ -735,6 +738,7 @@ async function boot2() {
   setMenuBusy(false);
   const m = /^#([A-Za-z0-9]{5})$/.exec(location.hash || '');
   if (m) { $('join-code').value = m[1].toUpperCase(); netNote('You were invited to room ' + m[1].toUpperCase() + '. Press Join.'); }
+  prog(1); await wait();
   $('gate').hidden = true;
   Game.mode = 'coldopen';
   startColdOpen();

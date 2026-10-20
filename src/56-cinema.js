@@ -12,7 +12,7 @@ function startColdOpen() {
   setLetterbox(true);
   R.fade = 1;
   const c0 = areaPt(7, 6.5, 12.0), cell = areaPt(7, 21.5, 6.6);
-  Cinema.coldCam = { x0: c0.x, x1: c0.x + 9.5, z: c0.z };
+  Cinema.coldCam = { x0: c0.x + 1.6, x1: c0.x + 10.0, z: c0.z };
   Cinema.cell = cell;
   Cinema.crNet = { x: cell.x, z: cell.z, yaw: 0, st: 0.2, mode: 'reach', lx: cell.x, ly: 1.2, lz: cell.z + 3.0 };
   setAreaVisibility(7);
@@ -93,6 +93,7 @@ function updateLobbyScene(dt, t) {
     }
     const pos = areaPt(0, LINEUP[i][0], LINEUP[i][1]);
     m.h.root.position.set(pos.x, 0, pos.z);
+    if (m.h.tag) m.h.tag.visible = false;
     m.h.root.rotation.y = -Math.PI / 2 + Math.sin(t * 0.3 + i) * 0.15;
     animateHuman(m.h, dt, 0, -0.35 + Math.sin(t * 0.5 + i * 2) * 0.12, 0, true, t + i);
     m.h.headG.rotation.y = Math.sin(t * 0.4 + i * 1.7) * 0.5;
@@ -106,7 +107,8 @@ function updateLobbyScene(dt, t) {
     l.light.position.copy(_tw); l.target.position.copy(_tw).addScaledVector(_tdir, 3); l.light.intensity = LUX.mate;
   });
   const kc = areaPt(0, 22.4, 5.4), kt = areaPt(0, 24, 6.5);
-  R.key.position.set(kc.x, 5.6, kc.z); R.key.target.position.set(kt.x, 1.0, kt.z); R.key.intensity = 55 * (Math.random() < 0.02 ? 0.3 : 1);
+  R.key.color.setHex(0xffe2c0); R.key.angle = 0.55; R.key.penumbra = 0.85; R.key.distance = 22;
+  R.key.position.set(kc.x, 5.6, kc.z); R.key.target.position.set(kt.x, 1.0, kt.z); R.key.intensity = 120 * (Math.random() < 0.02 ? 0.3 : 1);
   // The camera drifts in front of them, looking past them down the aisle - and leans after the mouse, as if
   // you were the one standing there turning your head a little to see.
   MenuMouse.sx = damp(MenuMouse.sx, MenuMouse.x, 2.4, dt); MenuMouse.sy = damp(MenuMouse.sy, MenuMouse.y, 2.4, dt);
@@ -114,6 +116,10 @@ function updateLobbyScene(dt, t) {
   const c = areaPt(0, 20.6, 6.5);
   camAt(c.x + Math.sin(t * 0.17) * 0.2, 1.45 + Math.sin(t * 0.23) * 0.06 - my * 0.18, c.z + Math.sin(t * 0.11) * 0.3 + mx * 0.45,
     c.x + 6, 1.25 - my * 0.55, c.z + Math.sin(t * 0.13) * 0.3 + mx * 1.6);
+  // the menu covers the left of the screen: frame the shot on what is left of it, so the team stands clear
+  const side = document.querySelector('#lobby .side'), iw = window.innerWidth, ih = window.innerHeight, pw = side ? side.getBoundingClientRect().width : 0;
+  const shift = pw > 0 && pw < iw * 0.6 ? pw * 0.5 : 0;
+  if (!R.camera.view || !R.camera.view.enabled || Math.abs(R.camera.view.offsetX + shift) > 0.5 || R.camera.view.fullWidth !== iw || R.camera.view.fullHeight !== ih) R.camera.setViewOffset(iw, ih, -shift, 0, iw, ih);
   setFlash(0);
   // now and then, something crosses the far end of the aisle
   Cinema.passT -= dt;
@@ -127,7 +133,8 @@ function updateLobbyScene(dt, t) {
   updateCreature(dt, t, net, Game.L, R.camera.position);
   const bl = areaPt(0, 32.5, 6.5);
   R.backlight.position.set(bl.x, 3.2, bl.z);
-  R.backlight.intensity = LUX.backlight * (Math.random() < 0.03 ? 0.2 : 1);
+  R.backlight.color.setHex(0xffb070); R.backlight.distance = 16;
+  R.backlight.intensity = LUX.backlight * 1.6 * (Math.random() < 0.03 ? 0.2 : 1);
   updateLightPool(dt, R.camera, 0);
 }
 function clearLineup() { for (const m of Cinema.lineup) R.scene.remove(m.h.root); Cinema.lineup = []; R.mates.forEach((l) => { l.light.intensity = 0; }); R.backlight.intensity = 0; R.key.intensity = 0; }

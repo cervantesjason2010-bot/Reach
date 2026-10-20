@@ -2,12 +2,18 @@
 <div class="bar top"></div><div class="bar bottom"></div>
 
 <section id="gate" class="fullscreen">
+  <div class="gate-glow" aria-hidden="true"></div>
+  <div class="gate-grain" aria-hidden="true"></div>
+  <div class="gate-top"><span>A Jason Production</span><span>Early access build</span></div>
   <div class="sheet">
     <h1 class="gate-title">REACH</h1>
-    <div class="gate-hint">Headphones on · Lights off<br>Keyboard and mouse</div>
+    <p class="gate-tag">Stay quiet. Stay out of reach.</p>
     <button id="gate-go" class="gate-go" type="button">Click to begin</button>
+    <div id="gate-load" class="gate-load" hidden><i id="gate-bar"></i></div>
     <div id="loading" class="loading" role="status" aria-live="polite"></div>
+    <div class="gate-hint"><span>Headphones on</span><span>Lights off</span><span>Keyboard and mouse</span></div>
   </div>
+  <p class="gate-warn">Contains blood, sudden loud noises and flickering light.</p>
 </section>
 
 <div id="credit" class="fullscreen" hidden><p>A Jason Production<small>Lead Developer · Jason</small></p></div>
@@ -20,7 +26,7 @@
   <div class="side">
     <div>
       <h1 class="logo">REACH</h1>
-      <p class="tag">Ten floors of a dead facility. One way up. Something tall is listening.</p>
+      <p class="tag">One dead facility, three floors of it. Something different hunts on every one.</p>
     </div>
 
     <div id="menu-main" class="stack">
