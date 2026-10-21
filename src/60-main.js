@@ -1,6 +1,6 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto' };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -14,14 +14,17 @@ function loadSettings() {
   Settings.sens = typeof saved.sens === 'number' ? clamp(saved.sens, 0.4, 2.4) : 1;
   Settings.vol = typeof saved.vol === 'number' ? clamp(saved.vol, 0, 1) : 0.9;
   Settings.bright = typeof saved.bright === 'number' ? clamp(saved.bright, 0.7, 1.9) : 1.15;
-  Settings.gfx = ['low', 'med', 'high', 'ultra'].includes(saved.gfx) ? saved.gfx : 'high';
-  Settings.rdist = [30, 50, 80, 140].includes(saved.rdist) ? saved.rdist : 80;
+  // a phone or a tablet starts on settings it can carry; anyone can turn them up
+  Settings.gfx = ['low', 'med', 'high', 'ultra'].includes(saved.gfx) ? saved.gfx : TOUCH_DEVICE ? 'low' : 'high';
+  Settings.rdist = [30, 50, 80, 140].includes(saved.rdist) ? saved.rdist : TOUCH_DEVICE ? 50 : 80;
+  Settings.controls = ['auto', 'mobile', 'pc'].includes(saved.controls) ? saved.controls : 'auto';
   Settings.net = saved.net === 'relay' ? 'relay' : 'auto';
   Settings.whisper = saved.whisper !== false;
   Settings.early = saved.early === true;   // Seize - B5 and Breach - A1 unlocked with the early access code
   Settings.map = saved.map === 'camp' ? 'camp' : EARLY_MAPS.includes(saved.map) && Settings.early ? saved.map : 'l1';
   Settings.ui = [0.7, 0.85, 1].includes(saved.ui) ? saved.ui : 0.85;
   applyUiSize();
+  applyControls();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
   $('whisper').checked = Settings.whisper;
 }
@@ -30,7 +33,7 @@ function saveSettings() {
   if (v) Settings.name = v;
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
-      gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early }));
+      gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls }));
   } catch (e) { /* storage blocked */ }
 }
 
@@ -94,9 +97,10 @@ function setMode(m) {
   if (m !== 'end') $('end').hidden = true;
   $('skip').hidden = !(m === 'coldopen' || (m === 'intro' && netIsHost()));
   if (m !== 'play' && document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) { /* fine */ } }
+  touchRelease();
   if (World.viewModel) World.viewModel.group.visible = m === 'play' || m === 'intro';
   if (m === 'lobby') renderLobbyUI();
-  if (m === 'play' && !document.pointerLockElement && !Look.dragLook) { $('pause').hidden = false; setText($('pause-note'), 'Click to take control.'); setText($('btn-resume'), 'Play'); }
+  if (m === 'play' && !document.pointerLockElement && !Look.dragLook && !Touch.on) { $('pause').hidden = false; setText($('pause-note'), 'Click to take control.'); setText($('btn-resume'), 'Play'); }
 }
 
 // ---------- levels ----------
@@ -167,6 +171,7 @@ function enterRound(g) {
   for (const m of World.bloodPools || []) if (m.parent) m.parent.remove(m);
   World.bloodPools = [];
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
+  if (Touch.on) { lockSideways(); keepAwake(true); }
   if (g.ph === 'intro') { setMode('intro'); startIntro(); }
   else { Cinema.mode = null; setLetterbox(false); setMode('play'); }
 }
@@ -287,7 +292,8 @@ function renderLobbyUI() {
 const Look = { dragLook: false };
 // Pointer lock needs a click; if a click-driven request fails, fall back to drag-to-look.
 function lockPointer(fromClick) {
-  if (Look.dragLook) { $('pause').hidden = true; Game.paused = false; return; }
+  // on a touch screen there is no pointer to lock: the right of the screen is the look
+  if (Look.dragLook || Touch.on) { $('pause').hidden = true; Game.paused = false; return; }
   const c = $('view');
   const fail = () => { if (fromClick) { Look.dragLook = true; $('pause').hidden = true; Game.paused = false; showToast('Hold the mouse button and drag to look', '', 3000); } };
   try {
@@ -310,7 +316,7 @@ function wireInput() {
     if (e.code === 'KeyQ') Input.qPressed = true;
     if (e.code === 'KeyG') Input.gPressed = true;
     if (/^Digit[1-5]$/.test(e.code)) Input.slotPick = +e.code.slice(5) - 1;
-    if (e.code === 'KeyM') { Settings.muted = !Settings.muted; Sound.setMicMuted(Settings.muted); showToast(Settings.muted ? 'Mic muted' : 'Mic on', '', 1200); }
+    if (e.code === 'KeyM') toggleMute();
     if ((e.code === 'Space' || e.code === 'Escape') && (Game.mode === 'coldopen' || Game.mode === 'intro' || (Game.mode === 'end' && Cinema.mode === 'ending'))) skipCinema();
     if (e.code === 'Escape' && Game.mode === 'play' && !document.pointerLockElement) togglePause(true);
     if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
@@ -322,7 +328,7 @@ function wireInput() {
     if (locked) { $('pause').hidden = true; Game.paused = false; }
     else if (Game.mode === 'play' && !Look.dragLook && !Game.reading) togglePause(true);
   });
-  c.addEventListener('mousedown', () => { Input.mouseDown = true; if (Game.mode === 'play' && !document.pointerLockElement) lockPointer(true); });
+  c.addEventListener('mousedown', () => { Input.mouseDown = true; if (Game.mode === 'play' && !document.pointerLockElement && !Touch.on) lockPointer(true); });
   window.addEventListener('mouseup', () => { Input.mouseDown = false; });
   window.addEventListener('mousemove', (e) => {
     const me = Game.me;
@@ -343,8 +349,11 @@ function wireInput() {
     Input.slotPick = (Game.slot || 0) + (e.deltaY > 0 ? 1 : -1);
   }, { passive: true });
 }
+function toggleMute() { Settings.muted = !Settings.muted; Sound.setMicMuted(Settings.muted); showToast(Settings.muted ? 'Mic muted' : 'Mic on', '', 1200); }
 function togglePause(on) {
   if (Game.mode !== 'play') return;
+  if (on) touchRelease();
+  $('btn-full').hidden = !(on && Touch.on && fullscreenAvailable() && !fullscreenOn());
   $('pause').hidden = !on;
   setText($('pause-note'), Net.mode === 'solo' ? 'The facility waits for you. For now.' : 'The game keeps running for your team.');
   setText($('btn-resume'), 'Resume');
@@ -361,7 +370,7 @@ function wireMenus() {
   $('gate-go').addEventListener('click', boot2);
   $('gate').addEventListener('click', boot2);
   $('skip').addEventListener('click', skipCinema);
-  $('btn-solo').addEventListener('click', () => { Net.mode = 'solo'; startGame(); });
+  $('btn-solo').addEventListener('click', () => { goFullscreen(true); Net.mode = 'solo'; startGame(); });
   renderSwatches(); renderMaps(); wireKeypad();
   $('maps').addEventListener('click', (e) => {
     const b = e.target.closest('.map'); if (!b) return;
@@ -372,6 +381,7 @@ function wireMenus() {
   wireSegs('gfx', 'gfx', () => applyGraphics());
   wireSegs('rdist', 'rdist', () => applyRenderDistance(), Number);
   wireSegs('netmode', 'net', null);
+  wireSegs('ctlmode', 'controls', applyControls);
   $('btn-nettest').addEventListener('click', async () => {
     const b = $('btn-nettest'), o = $('nettest-out');
     if (b.disabled) return;
@@ -394,14 +404,14 @@ function wireMenus() {
     if (!/^[A-Z0-9]{5}$/.test(code)) { netNote('Room codes are 5 letters or numbers.', true); return; }
     goOnline(code, false);
   };
-  $('btn-join').addEventListener('click', join);
+  $('btn-join').addEventListener('click', () => { goFullscreen(false); join(); });
   $('join-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); });
   $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
   $('name-input').addEventListener('change', saveSettings);
   $('sens').addEventListener('input', (e) => { Settings.sens = +e.target.value; saveSettings(); });
   $('vol').addEventListener('input', (e) => { Settings.vol = +e.target.value; Sound.setMaster(Settings.vol); saveSettings(); });
   $('bright').addEventListener('input', (e) => { Settings.bright = +e.target.value; if (R) R.exposure = Settings.bright; saveSettings(); });
-  $('btn-start').addEventListener('click', () => { if (netIsHost()) startGame(); });
+  $('btn-start').addEventListener('click', () => { if (netIsHost()) { goFullscreen(true); startGame(); } });
   $('btn-leave').addEventListener('click', leaveOnline);
   $('btn-copy').addEventListener('click', () => {
     const link = inviteLinkFor(Net.code), text = link ? (IN_CLAUDE ? link + ' (room code ' + Net.code + ')' : link) : Net.code;
@@ -419,6 +429,7 @@ function wireMenus() {
   $('btn-quit').addEventListener('click', async () => { $('pause').hidden = true; await backToLobby(); });
   $('btn-again').addEventListener('click', () => {
     if (!(Net.mode === 'solo' || netIsHost())) return;
+    goFullscreen(true);
     // the campaign goes on to the next level, or back to the start
     if (Settings.map === 'camp') Game.campLv = Game.endNext || 'l1';
     startGame();
@@ -434,6 +445,7 @@ async function backToLobby() {
   Game.mates.clear();
   updateCreature(0, 0, { mode: 'hidden' }, Game.L, R.camera.position);
   setChudVisible(false); setPaleVisible(false);
+  unlockSideways(); keepAwake(false);
   if (Game.levelKey !== 'l1') await showLevelLoading('l1');
   enterLobbyScene();
 }
@@ -638,6 +650,7 @@ function tickFrame(now) {
     case 'end': if (Cinema.mode === 'ending') updateEnding(dt, t); else { R.fade = damp(R.fade, 1, 1, dt); } ca = Cinema.mode === 'ending' ? Cinema.ca : 9; break;
     case 'debug': ca = Game.debugArea || 0; if (Game.debugTick) Game.debugTick(dt, t); updateLightPool(dt, R.camera, ca); break;
   }
+  updateTouch();
   // the lobby's off-centre framing is only for the lobby
   if (Game.mode !== 'lobby' && R.camera.view && R.camera.view.enabled) R.camera.clearViewOffset();
   if (Game.me && Game.g && (Game.mode === 'intro' || Game.mode === 'play' || Game.mode === 'end')) {
@@ -691,11 +704,13 @@ function boot1() {
   loadSettings();
   wireMenus();
   wireInput();
+  wireTouch();
   setText($('loading'), '');
 }
 async function boot2() {
   if (booted) return;
   booted = true;
+  goFullscreen(false);
   Sound.init(); Sound.setMaster(Settings.vol); Sound.setTheme('title');
   $('gate-go').disabled = true; $('gate-go').hidden = true; $('gate-load').hidden = false;
   const bar = $('gate-bar'), prog = (f) => { bar.style.width = (clamp(f, 0, 1) * 100).toFixed(1) + '%'; };

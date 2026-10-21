@@ -522,7 +522,7 @@ function openKeypad(id) {
   const g = Game.g; if (!g || !g.ord || !g.ord[id]) return;
   Game.keypad = { id, entry: '' };
   const box = $('keypad'), slots = $('kp-slots');
-  keypadTexts('Keypad', 'Type the four numbers in the order of the lamps', 'Step away · Esc');
+  keypadTexts('Keypad', 'Type the four numbers in the order of the lamps', escHint('Step away'));
   slots.textContent = '';
   [...g.ord[id]].forEach((k) => { const s = document.createElement('span'); s.style.borderColor = CODE_COLORS[+k]; s.style.color = CODE_COLORS[+k]; s.title = CODE_NAMES[+k]; slots.appendChild(s); });
   box.hidden = false; box.classList.remove('wrong', 'right');
@@ -558,7 +558,7 @@ function openAccessPad(want) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   Game.keypad = { id: -1, access: true, entry: '', want };
   const box = $('keypad'), slots = $('kp-slots');
-  keypadTexts('Early access', 'Enter your code to play Seize - B5 and Breach - A1 early', 'Cancel · Esc');
+  keypadTexts('Early access', 'Enter your code to play Seize - B5 and Breach - A1 early', escHint('Cancel'));
   slots.textContent = '';
   for (let i = 0; i < 4; i++) { const s = document.createElement('span'); s.style.borderColor = '#e8a33a'; s.style.color = '#e8e4da'; slots.appendChild(s); }
   box.hidden = false; box.classList.remove('wrong', 'right');

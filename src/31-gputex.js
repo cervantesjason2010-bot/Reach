@@ -508,12 +508,12 @@ function gtexSetup(renderer) {
         gl_FragColor = vec4(n * 0.5 + 0.5, texture2D(tH, vUv).b);
       }`,
   });
-  // software renderers get smaller textures
+  // software renderers, and phones and tablets, get smaller textures
   try {
     const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info');
     const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
-    GTex.lowRes = /swiftshader|llvmpipe|software|basic render/i.test(name);
-  } catch (e) { GTex.lowRes = false; }
+    GTex.lowRes = TOUCH_DEVICE || /swiftshader|llvmpipe|software|basic render/i.test(name);
+  } catch (e) { GTex.lowRes = TOUCH_DEVICE; }
 }
 function gtexMaterial(name) {
   if (GTex.mats[name]) return GTex.mats[name];

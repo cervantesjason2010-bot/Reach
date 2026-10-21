@@ -57,9 +57,9 @@ function updateHud(dt) {
   const prompt = $('prompt');
   if (tg && !me.dead && Game.mode === 'play') {
     prompt.hidden = false;
-    setText($('prompt-key'), tg.ok ? 'E' : '');
+    setText($('prompt-key'), tg.ok ? keyWord('E') : '');
     $('prompt-key').hidden = !tg.ok;
-    setText($('prompt-text'), tg.label);
+    setText($('prompt-text'), Touch.on ? tg.label.replace('Hold E ', 'Hold Use ') : tg.label);
     const p = tg.hold ? (tg.progress || 0) : 0;
     $('prompt-ring').style.setProperty('--p', String(Math.round(p * 100)));
     $('prompt-ring').hidden = !tg.hold;

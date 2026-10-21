@@ -8,10 +8,10 @@
   <div class="sheet">
     <h1 class="gate-title">REACH</h1>
     <p class="gate-tag">Stay quiet. Stay out of reach.</p>
-    <button id="gate-go" class="gate-go" type="button">Click to begin</button>
+    <button id="gate-go" class="gate-go" type="button"><span class="only-keys">Click to begin</span><span class="only-touch">Tap to begin</span></button>
     <div id="gate-load" class="gate-load" hidden><i id="gate-bar"></i></div>
     <div id="loading" class="loading" role="status" aria-live="polite"></div>
-    <div class="gate-hint"><span>Headphones on</span><span>Lights off</span><span>Keyboard and mouse</span></div>
+    <div class="gate-hint"><span>Headphones on</span><span>Lights off</span><span class="only-keys">Keyboard and mouse</span><span class="only-touch">Hold it sideways</span></div>
   </div>
   <p class="gate-warn">Contains blood, sudden loud noises and flickering light.</p>
 </section>
@@ -37,10 +37,14 @@
       <div class="field"><span class="label" id="map-label">Map</span>
         <div id="maps" class="maps" role="radiogroup" aria-labelledby="map-label">
           <button class="map" data-map="l1" type="button" role="radio"><span class="mn">Level 1</span><b>Reach - B4</b><span class="md">Ten areas of a dead facility. Something tall that hunts by sound.</span></button>
-          <button class="map locked" data-map="l2" type="button" role="radio"><span class="mn">Level 2 · Coming soon</span><b>Seize - B5</b><span class="md">No lights. Something huge that hunts by sight.</span><span class="ea">Have an early access code? Click to enter it.</span></button>
-          <button class="map locked" data-map="l3" type="button" role="radio"><span class="mn">Level 3 · Coming soon</span><b>Breach - A1</b><span class="md">The bunker under the surface. Something that only sees you move.</span><span class="ea">Have an early access code? Click to enter it.</span></button>
+          <button class="map locked" data-map="l2" type="button" role="radio"><span class="mn">Level 2 · Coming soon</span><b>Seize - B5</b><span class="md">No lights. Something huge that hunts by sight.</span><span class="ea">Have an early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> to enter it.</span></button>
+          <button class="map locked" data-map="l3" type="button" role="radio"><span class="mn">Level 3 · Coming soon</span><b>Breach - A1</b><span class="md">The bunker under the surface. Something that only sees you move.</span><span class="ea">Have an early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> to enter it.</span></button>
           <button class="map" data-map="camp" type="button" role="radio"><span class="mn">Campaign</span><b>All the Way Down</b><span class="md">Every level in order, one run. More levels are coming.</span></button>
         </div>
+      </div>
+      <div class="field"><span class="label" id="ctl-label">Controls</span>
+        <div id="ctlmode" class="segs" role="radiogroup" aria-labelledby="ctl-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="mobile">Mobile</button><button type="button" data-v="pc">PC</button></div>
+        <p id="ctl-note" class="note"></p>
       </div>
       <button id="btn-solo" class="btn" type="button">Play solo <span class="k">1 player</span></button>
       <button id="btn-host" class="btn ghost" type="button">Host co-op <span class="k">2–4 players</span></button>
@@ -73,7 +77,7 @@
           <button id="btn-mic" class="btn ghost" type="button">Turn on voice chat</button>
           <p class="note">Your teammates hear you nearby. So does it.</p>
         </div>
-        <div class="slider"><label class="label" for="sens">Mouse sensitivity</label><input id="sens" type="range" min="0.4" max="2.4" step="0.05" value="1"></div>
+        <div class="slider"><label class="label" for="sens"><span class="only-keys">Mouse sensitivity</span><span class="only-touch">Look sensitivity</span></label><input id="sens" type="range" min="0.4" max="2.4" step="0.05" value="1"></div>
         <div class="slider"><label class="label" for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.9"></div>
         <div class="slider"><label class="label" for="bright">Brightness</label><input id="bright" type="range" min="0.7" max="1.9" step="0.05" value="1.15"></div>
         <div class="field"><span class="label" id="ui-label">HUD size</span>
@@ -84,7 +88,7 @@
         </div>
         <div class="field"><span class="label" id="rd-label">Render distance</span>
           <div id="rdist" class="segs" role="radiogroup" aria-labelledby="rd-label"><button type="button" data-v="30">Near</button><button type="button" data-v="50">Medium</button><button type="button" data-v="80">Far</button><button type="button" data-v="140">Max</button></div>
-          <p class="note">How far out the world is drawn. Nearer is easier on your computer.</p>
+          <p class="note">How far out the world is drawn. Nearer runs faster.</p>
         </div>
         <div class="field"><span class="label" id="net-label">Connection</span>
           <div id="netmode" class="segs" role="radiogroup" aria-labelledby="net-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="relay">Relay</button></div>
@@ -93,7 +97,13 @@
           <p id="nettest-out" class="note" hidden></p>
         </div>
         <label class="check"><input id="whisper" type="checkbox" checked><span>Whisper-safe mic: it hears talking and yelling, never whispers</span></label>
-        <div class="controls">
+        <div class="controls only-touch">
+          <span><kbd>Left</kbd>Drag to move</span><span><kbd>Right</kbd>Drag to look</span>
+          <span><kbd>Use</kbd>Tap or hold</span><span><kbd>Run</kbd>Tap, or push the stick far up</span>
+          <span><kbd>Light</kbd>Torch on / off</span><span><kbd>Crouch</kbd>Sneak</span>
+          <span><kbd>Slots</kbd>Tap an item</span><span><kbd>❚❚</kbd>Pause</span>
+        </div>
+        <div class="controls only-keys">
           <span><kbd>WASD</kbd>Move</span><span><kbd>Shift</kbd>Run</span>
           <span><kbd>C</kbd>Crouch</span><span><kbd>F</kbd>Flashlight</span>
           <span><kbd>E</kbd>Use / hold</span><span><kbd>G</kbd>Whistle</span>
@@ -111,6 +121,16 @@
 </section>
 
 <div id="hud" hidden>
+  <div id="touch" aria-label="Touch controls">
+    <div id="t-stick" aria-hidden="true"><i id="t-knob"></i></div>
+    <button id="t-use" class="tb" type="button" aria-label="Use"><i class="ring"></i><b>Use</b></button>
+    <button id="t-light" class="tb" type="button" aria-label="Flashlight"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="10" width="9" height="5" rx="1"/><path d="M11.5 9.5l4-2.5v11l-4-2.5z"/><path d="M18 8.5l3-2M18 12.5h3.5M18 16.5l3 2"/></svg><small>Light</small></button>
+    <button id="t-crouch" class="tb" type="button" aria-label="Crouch"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l6 5 6-5M6 12.5l6 5 6-5"/></svg><small>Crouch</small></button>
+    <button id="t-run" class="tb" type="button" aria-label="Run"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18l6-5 6 5M6 11.5l6-5 6 5"/></svg><small>Run</small></button>
+    <button id="t-drop" class="tb sm" type="button" aria-label="Drop the item in your hand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10M8 10.5l4 4 4-4M5 19h14"/></svg><small>Drop</small></button>
+    <button id="t-whistle" class="tb sm" type="button" aria-label="Whistle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><path d="M10 8.5a5 5 0 0 1 0 7M13.5 6a8.5 8.5 0 0 1 0 12M17 3.5a12 12 0 0 1 0 17"/></svg><small>Whistle</small></button>
+    <button id="t-pause" class="tb sm" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg></button>
+  </div>
   <div class="hud-tl"><span id="hud-area"></span><span id="objective"></span></div>
   <ul id="team" hidden></ul>
   <div class="dot"></div>
@@ -139,7 +159,7 @@
     <button id="kp-close" type="button" class="kp-close">Step away · Esc</button>
   </div>
 </div>
-<div id="note" class="overlay" hidden><div class="paper"><span id="note-area"></span><p id="note-text"></p><span class="close">Click or press E to put it down</span></div></div>
+<div id="note" class="overlay" hidden><div class="paper"><span id="note-area"></span><p id="note-text"></p><span class="close"><span class="only-keys">Click or press E to put it down</span><span class="only-touch">Tap to put it down</span></span></div></div>
 <div id="scare" class="overlay" hidden><canvas id="scare-canvas" width="300" height="300"></canvas></div>
 <div id="death" class="overlay" hidden><div class="box"><h2>Taken</h2><p id="death-text" class="note"></p></div></div>
 <div id="pause" class="overlay" hidden>
@@ -147,9 +167,12 @@
     <h2>Paused</h2>
     <p id="pause-note" class="note">The game keeps running for your team.</p>
     <button id="btn-resume" class="btn" type="button">Resume</button>
+    <button id="btn-full" class="btn ghost" type="button" hidden>Full screen</button>
     <button id="btn-quit" class="btn ghost" type="button">Leave to the lobby</button>
   </div>
 </div>
+<div id="rotate" class="overlay" hidden><div class="box"><svg class="rot-ico" viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="8" width="20" height="36" rx="3"/><path d="M14 50a22 22 0 0 0 34 6M44 56l4 0 0-4"/></svg><h2>Turn it sideways</h2><p class="note">REACH plays best with your phone held sideways: move with your left thumb, look with your right.</p><button id="btn-rotate-ok" class="btn ghost" type="button">Play like this anyway</button></div></div>
+<div id="ctx-lost" class="overlay" hidden><div class="box"><h2>Lights out</h2><p class="note">Your device reset the graphics, which phones do to save memory when a game sits in the background. Reload to carry on.</p><button id="btn-reload" class="btn" type="button">Reload</button></div></div>
 <div id="level-load" class="fullscreen" hidden><div class="ll"><span class="nc-kick">Going down</span><h1 id="ll-title">Seize - B5</h1><p id="ll-note"></p></div></div>
 <div id="next-card" class="fullscreen" hidden><div class="nc"><span id="nc-kick" class="nc-kick">Level 2</span><h1 id="nc-title">Seize<span class="nc-dash"> - </span>B5</h1><p id="nc-note">Coming soon</p></div></div>
 <section id="end" class="fullscreen" hidden>

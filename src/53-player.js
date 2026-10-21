@@ -132,10 +132,13 @@ function updateLocalPlayer(dt, t) {
   const typing = !!Game.keypad;
   let fwd = typing ? 0 : ((k.KeyW || k.ArrowUp) ? 1 : 0) - ((k.KeyS || k.ArrowDown) ? 1 : 0);
   let str = typing ? 0 : ((k.KeyD || k.ArrowRight) ? 1 : 0) - ((k.KeyA || k.ArrowLeft) ? 1 : 0);
+  // the touch stick is analogue: push it a little to creep, all the way to walk
+  const ts = !typing && touchMove();
+  if (ts && (ts.x || ts.y)) { fwd = -ts.y; str = ts.x; }
   const moving = fwd || str;
   // carrying the power cell: both arms full of it - slow, and no running
   const laden = myInventory(g).cell;
-  const wantSprint = (k.ShiftLeft || k.ShiftRight) && moving && !crouch && fwd >= 0 && !laden;
+  const wantSprint = (k.ShiftLeft || k.ShiftRight || touchSprint()) && moving && !crouch && fwd >= 0 && !laden;
   if (wantSprint && me.stamina > 0.05) { me.sprinting = true; me.stamina = Math.max(0, me.stamina - dt); }
   else { me.sprinting = false; me.stamina = Math.min(STAMINA_MAX, me.stamina + dt * (moving ? 0.6 : 1.1)); }
   const wet = cellFlag(L, L.water, me.x, me.z);
@@ -146,7 +149,8 @@ function updateLocalPlayer(dt, t) {
   // a body has weight: you get up to speed in a few steps and take a moment to stop
   let wx = 0, wz = 0;
   if (moving) {
-    const len = Math.hypot(fwd, str); fwd /= len; str /= len;
+    // two keys at once go no faster than one; a stick held part way goes part speed
+    const len = Math.max(1, Math.hypot(fwd, str)); fwd /= len; str /= len;
     const s = Math.sin(me.yaw), c = Math.cos(me.yaw);
     // camera faces -z at yaw 0: forward (-sin, -cos), right (cos, -sin)
     wx = (-s * fwd + c * str) * sp; wz = (-c * fwd - s * str) * sp;
@@ -231,7 +235,7 @@ function findInteractable(g) {
     const st = g.it[it.id];
     if (!st || !st.p) continue;
     consider(st.p[0], st.p[1], 1.9, () => inv.count >= INV_SLOTS
-      ? { ok: false, label: 'Hands full (' + INV_SLOTS + '/' + INV_SLOTS + ')', why: 'You can carry five things. Drop one with Q.' }
+      ? { ok: false, label: 'Hands full (' + INV_SLOTS + '/' + INV_SLOTS + ')', why: 'You can carry five things. Drop one with ' + (Touch.on ? 'the Drop button.' : 'Q.') }
       : { action: 'pick', id: it.id, ok: true, label: 'Pick up the ' + ITEM_NAMES[it.type] });
   }
   for (const n of L.notes) consider(n.x, n.z, 1.7, () => ({ action: 'note', note: n, ok: true, label: 'Read the note' }));
@@ -298,7 +302,7 @@ function processGameEvents() {
         break;
       }
       case 'pick': if (ev.who !== myId) Sound.play('pickup', pos); else showToast('Picked up the ' + ITEM_NAMES[itemType(ev.item)], '', 1800); break;
-      case 'deny': if (ev.who === myId) { Sound.play('deny', pos); if (ev.full) showToast('Your hands are full. Drop something with Q.', '', 2200); if (ev.code) keypadWrong(); } break;
+      case 'deny': if (ev.who === myId) { Sound.play('deny', pos); if (ev.full) showToast('Your hands are full. Drop something with ' + (Touch.on ? 'the Drop button.' : 'Q.'), '', 2200); if (ev.code) keypadWrong(); } break;
       // Seize - B5: it saw someone; it came up somewhere ahead; it took someone
       case 'chudSaw': if (ev.who === myId) { Sound.play('sting'); R.fearKick = 1; showToast('It saw your light', 'danger', 1800); } break;
       case 'chudBang': Sound.chudStep({ x: ev.x, y: 0.5, z: ev.z }, 1.3, 0); Sound.chudGrunt({ x: ev.x, y: 2.2, z: ev.z }, true); break;
@@ -351,6 +355,7 @@ function processGameEvents() {
         Sound.bang(f, p3, inThere ? clamp(1.15 - d * 0.1, 0.5, 1) : 0);
         debrisBurst(ev.x, ev.y, ev.z, f, 1);
         if (inThere) {
+          buzz(45);
           const k = clamp(1.25 - d * 0.15, 0.62, 1.25);
           R.hit = Math.max(R.hit || 0, 1.65 * k);
           R.shake = Math.max(R.shake || 0, 0.95 * k);
@@ -393,6 +398,7 @@ function processGameEvents() {
 
 function onLocalDeath() {
   Sound.play('grab');
+  buzz([90, 60, 220]);
   // no jump scare: whoever it catches lives through the whole drag and beating, mic open and a little louder
   Game.scare = { t: 0, n: 0, from: R.camera.position.clone(), x: Game.me.x, z: Game.me.z };
   Sound.voiceBoost(true);

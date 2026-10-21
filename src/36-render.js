@@ -109,6 +109,11 @@ function initRenderer(canvas) {
   renderer.physicallyCorrectLights = true;
   Tex.aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const gl2 = renderer.capabilities.isWebGL2;
+  // some phones can't draw into half-float targets: they get plain 8-bit ones (and no eye adaptation) instead
+  const glc = renderer.getContext(), hf = gl2 && !!(glc.getExtension('EXT_color_buffer_float') || glc.getExtension('EXT_color_buffer_half_float'));
+  // a phone that puts the game in the background can take the graphics away; everything baked on the GPU
+  // goes with them, so the only way back is a reload - say so rather than leave a black screen
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); const box = document.getElementById('ctx-lost'); if (box) box.hidden = false; }, false);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.FogExp2(0x000000, 0.07);
@@ -146,9 +151,10 @@ function initRenderer(canvas) {
   const key = new THREE.SpotLight(0xffe2c0, 0, 22, 0.55, 0.85, 2);
   scene.add(key); scene.add(key.target);
   const pool = [];
-  for (let i = 0; i < 8; i++) { const p = new THREE.PointLight(0xffffff, 0, 8, 2); scene.add(p); pool.push(p); }
+  // the nearest lamps get real lights; a phone gets fewer of them, every one is paid for on every pixel
+  for (let i = 0, n = TOUCH_DEVICE ? 6 : 8; i < n; i++) { const p = new THREE.PointLight(0xffffff, 0, 8, 2); scene.add(p); pool.push(p); }
 
-  const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: gl2 ? THREE.HalfFloatType : THREE.UnsignedByteType };
+  const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: hf ? THREE.HalfFloatType : THREE.UnsignedByteType };
   const rtScene = gl2 && THREE.WebGLMultisampleRenderTarget ? new THREE.WebGLMultisampleRenderTarget(4, 4, rtOpts) : new THREE.WebGLRenderTarget(4, 4, rtOpts);
   if (rtScene.samples !== undefined) rtScene.samples = 4;
   const bloomRT = [0, 1, 2].map(() => ({ a: new THREE.WebGLRenderTarget(4, 4, rtOpts), b: new THREE.WebGLRenderTarget(4, 4, rtOpts) }));
@@ -158,7 +164,7 @@ function initRenderer(canvas) {
   quad.frustumCulled = false; quadScene.add(quad);
   // eye adaptation: average log luminance on a small target, eased over time into a 1x1 target
   const fOpts = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat, type: THREE.HalfFloatType, depthBuffer: false };
-  const autoOn = gl2;
+  const autoOn = hf;
   const lumRT = new THREE.WebGLRenderTarget(64, 64, Object.assign({}, fOpts, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }));
   const adaptRT = [new THREE.WebGLRenderTarget(1, 1, fOpts), new THREE.WebGLRenderTarget(1, 1, fOpts)];
   const lumMat = new THREE.ShaderMaterial({ vertexShader: POST_VERT, fragmentShader: LUM_FRAG, uniforms: { tInput: { value: null }, texel: { value: new THREE.Vector2(0.004, 0.004) } }, depthTest: false, depthWrite: false });
@@ -201,6 +207,8 @@ const GFX = {
   ultra: { scaleMax: 1.0, prMax: 2, shadow: 2048, bloom: 1, msaa: 4 },
 };
 function gfxPreset() { return GFX[typeof Settings !== 'undefined' && Settings.gfx] || GFX.high; }
+// phones have small, dense screens: they draw a little sharper than a desktop does on the same setting
+function pixelRatio() { const P = gfxPreset(); return Math.min(window.devicePixelRatio || 1, TOUCH_DEVICE ? Math.max(P.prMax, 1.5) : P.prMax); }
 function renderDist() { return typeof Settings !== 'undefined' && Settings.rdist ? Settings.rdist : 80; }
 function applyGraphics() {
   if (!R.renderer) return;
@@ -223,14 +231,14 @@ function applyRenderDistance() {
 function resizeRenderer() {
   if (!R.renderer) return;
   const w = window.innerWidth, h = window.innerHeight;
-  const pr = Math.min(window.devicePixelRatio || 1, gfxPreset().prMax);
+  const pr = pixelRatio();
   R.renderer.setPixelRatio(pr);
   R.renderer.setSize(w, h, false);
   R.camera.aspect = w / h; R.camera.updateProjectionMatrix();
   applyRenderScale();
 }
 function applyRenderScale() {
-  const w = window.innerWidth, h = window.innerHeight, pr = Math.min(window.devicePixelRatio || 1, gfxPreset().prMax);
+  const w = window.innerWidth, h = window.innerHeight, pr = pixelRatio();
   const sw = Math.max(2, Math.floor(w * pr * R.scale)), sh = Math.max(2, Math.floor(h * pr * R.scale));
   R.rtScene.setSize(sw, sh);
   R.bloomRT.forEach((lv, i) => { const d = 2 << i; lv.a.setSize(Math.max(2, Math.floor(sw / d)), Math.max(2, Math.floor(sh / d))); lv.b.setSize(Math.max(2, Math.floor(sw / d)), Math.max(2, Math.floor(sh / d))); });
@@ -568,7 +576,7 @@ function adaptResolution(dt) {
   frameTimes = []; scaleTimer = 0;
   const before = R.scale;
   const top = gfxPreset().scaleMax;
-  if (avg > 0.026) R.scale = Math.max(Math.min(0.5, top), R.scale - 0.1);
+  if (avg > 0.026) R.scale = Math.max(Math.min(TOUCH_DEVICE ? 0.4 : 0.5, top), R.scale - 0.1);
   else if (avg < 0.0145) R.scale = Math.min(top, R.scale + 0.05);
   else if (R.scale > top) R.scale = top;
   if (R.scale !== before) applyRenderScale();
