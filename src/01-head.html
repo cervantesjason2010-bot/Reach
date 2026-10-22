@@ -104,6 +104,7 @@ details.settings[open] summary { color: var(--ink); }
 
 /* ---------- HUD ---------- */
 #hud { --ui: 0.85; position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+#hud.scared > :not(#touch) { visibility: hidden; }
 /* HUD size setting: everything at the edges scales from its own corner */
 #hud .hud-tl { transform: scale(var(--ui)); transform-origin: top left; }
 #hud #team { transform: scale(var(--ui)); transform-origin: top right; }

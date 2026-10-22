@@ -467,6 +467,10 @@ function rayWallDistance(x, z, yaw, max) {
   return max;
 }
 const _scFace = new THREE.Vector3(), _scJit = new THREE.Vector3(), _scLook = new THREE.Vector3(), _scGrip = new THREE.Vector3();
+const JUMP_END = 1.15;          // how long its face is in yours before everything goes
+// nothing on the screen but its face while it is in yours
+let _hudScared = false;
+function hudScared(on) { if (on !== _hudScared) { _hudScared = on; $('hud').classList.toggle('scared', on); } }
 function updatePlayCamera(dt, t) {
   const me = Game.me, cam = R.camera, L = Game.L, g = Game.g;
   R.shake = Math.max(0, (R.shake || 0) - dt * 1.4);
@@ -479,41 +483,38 @@ function updatePlayCamera(dt, t) {
     let T = kl && kl.id === netMyId() && Game.gt !== undefined ? Game.gt - kl.t : -1;
     if (T > -0.6 && T < 0) T = 0;          // this machine's copy of the clock can trail the host's by a frame or two
     if (sc) sc.t += dt;
-    if (kl && kl.c && T >= 0 && T < beastKillLen(kl)) { beastKillCam(kl, T, dt, t); return crd; }
-    if (kl && kl.c && sc && T >= beastKillLen(kl)) { Game.scare = null; R.camera.fov = 72; R.camera.updateProjectionMatrix(); Sound.voiceBoost(false); }
+    if (isBeastKill(kl) && T >= 0 && T < beastKillLen(kl)) { beastKillCam(kl, T, dt, t); return crd; }
+    if (isBeastKill(kl) && sc && T >= beastKillLen(kl)) { Game.scare = null; R.camera.fov = 72; R.camera.updateProjectionMatrix(); Sound.voiceBoost(false); }
     if (sc && T >= 0 && T < KILL_TOTAL && Creature.visible) {
-      const head = Creature.headPos;
-      cam.position.copy(KS.head);
-      let jit = 0.05;
-      if (KS.phase === 0) {
-        // ---- dragged ----
-        // hauled along the floor feet first; you see the room you thought was safe sliding away behind you,
-        // and only as it hauls you up do you see it
-        const turn = smooth01((T - (KILL_DRAG - 0.45)) / 0.45);
-        pathPoint(killPathOf(kl), 0, _scLook);
-        _scLook.set(lerp(_scLook.x, head.x, turn), lerp(1.0, head.y - 0.15, turn), lerp(_scLook.z, head.z, turn));
-        cam.position.y += Math.abs(Math.sin(T * 17)) * 0.07;
-        cam.lookAt(_scLook);
-        cam.rotateZ(Math.sin(T * 9) * 0.1 + KS.roll);
-        cam.fov = 78; jit = 0.055;
-        if (Math.floor(T * 5) !== Math.floor((T - dt) * 5)) { Sound.play('bump', { x: cam.position.x, y: 0.3, z: cam.position.z }); R.shake = Math.max(R.shake, 0.5); }
+      // The jump scare. Its face - all of it, the mouth open on the scream - comes at you out of the dark, and
+      // then there is nothing. Everyone else watches what it does to you; you never see that part.
+      const C = Creature;
+      if (T < JUMP_END) {
+        // You stay where you were standing. Its head comes at you (see updateKill): your eyes go to its face.
+        C.head.updateMatrixWorld(true);
+        const aim = C.head.localToWorld(_scJit.set(0, 0.12, 0.6));
+        cam.position.copy(sc.from);
+        const look = _scLook.copy(aim);
+        if (T < 0.1) look.lerpVectors(_scFace.copy(sc.from).add(_scGrip.set(-Math.sin(Game.me.yaw), 0, -Math.cos(Game.me.yaw))), aim, smooth01(T / 0.1));
+        cam.lookAt(look);
+        const rush = smooth01(T / 0.3);
+        cam.rotateZ(Math.sin(T * 31) * 0.05 * (1 - rush) + (Math.random() - 0.5) * 0.04);
+        const jit = 0.012 + rush * 0.02 + (T < 0.3 ? 0.03 : 0);
+        cam.position.add(_scJit.set((Math.random() - 0.5) * jit, (Math.random() - 0.5) * jit, (Math.random() - 0.5) * jit));
+        cam.fov = lerp(80, 56, rush); cam.updateProjectionMatrix();
+        R.fear = 1; R.fade = 0;
+        if (T < 0.2) { R.whiteFlash = Math.max(R.whiteFlash, 0.22); R.hit = Math.max(R.hit || 0, 1.6); }
+        setFlash(Math.random() < 0.08 ? 0.25 : 1.15);
       } else {
-        // ---- swept up, thrown, slammed ----
-        cam.lookAt(head.x, head.y - 0.12, head.z);
-        cam.rotateZ(KS.roll);
-        cam.fov = lerp(78, 58, clamp((T - KILL_DRAG) / 1.8, 0, 1));
-        jit = 0.04 + R.shake * 0.05;
+        // and then nothing
+        R.fade = 1; R.fear = 1; setFlash(0);
       }
-      cam.position.add(_scJit.set((Math.random() - 0.5) * jit, (Math.random() - 0.5) * jit, (Math.random() - 0.5) * jit));
-      cam.updateProjectionMatrix();
-      R.fear = 1;
-      const fadeAt = KILL_TOTAL - 0.6;
-      if (T > fadeAt) R.fade = Math.min(1, (T - fadeAt) / 0.5);
-      setFlash(T < 0.35 ? 1 : (Math.random() < 0.5 ? 0.7 : 0.05));
       R.flashThrow = 1.2; R.bounce.intensity = 0;
       if (World.viewModel) World.viewModel.group.visible = false;
+      hudScared(true);
       return crd;
     }
+    hudScared(false);
     if (sc && (T >= KILL_TOTAL || sc.t > 1.2)) { Game.scare = null; cam.fov = 72; cam.updateProjectionMatrix(); Sound.voiceBoost(false); }
     const s = spectateTarget();
     if (s) { cam.position.set(s.m.x, 1.7, s.m.z); cam.rotation.set(s.m.pitch, s.m.yaw, 0); Game.watching = Game.names[s.id]; }
@@ -522,6 +523,7 @@ function updatePlayCamera(dt, t) {
     if (World.viewModel) World.viewModel.group.visible = false;
     return crd;
   }
+  hudScared(false);
   const wet = cellFlag(L, L.water, me.x, me.z) ? -0.22 : 0;
   const mv = clamp(me.speed / 1.6, 0, 1), spr = me.sprinting ? 1 : 0;
   me.sprintK = damp(me.sprintK || 0, spr, 4, dt);

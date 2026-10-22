@@ -1031,6 +1031,11 @@ function updateCreature(dt, t, net, L, camPos) {
   for (let i = 6; i < 9; i++) J[i].addScaledVector(bodyOff, -0.22 * (i - 5));
   // driving itself at something: the whole body surges, the neck shoots out further still
   if (O && (O.headPush || O.surge)) for (let i = 0; i < 9; i++) J[i].addScaledVector(F, (O.surge || 0) * (i / 8) + (i >= 6 ? (O.headPush || 0) * (i - 5) / 3 : 0));
+  // its head put right in someone's face: the neck shoots out, as far as it takes, to get it there
+  if (O && O.headAt) {
+    J[8].copy(O.headAt);
+    J[7].lerpVectors(J[6], J[8], 0.6).y += 0.06;
+  }
   // behind the cover of its lair: nothing of it past the plane of the cover, by its own thickness
   const EP = O && O.plane;
   const holdBehind = () => {
@@ -1145,12 +1150,18 @@ function updateCreature(dt, t, net, L, camPos) {
   C.head.position.copy(J[8]);
   C.head.up.copy(UP).lerp(spineDir, 0.3);
   C.head.lookAt(C.look);
-  C.head.rotateX(-0.2 - C.jaw * 0.25 + (tw.t > 0 ? tw.x : 0));
-  C.head.rotateY(tw.t > 0 ? tw.y : Math.sin(t * 0.6) * 0.1);
-  // crawling, it turns its head sideways, sometimes almost upside down
-  const roll = (1 - u) * (0.9 + 0.5 * Math.sin(t * 0.23)) * (mode === 'run' ? 0.5 : 1) + (tw.t > 0 ? tw.z : 0) + Math.sin(t * 0.5) * 0.15;
-  C.head.rotateZ(roll);
-  if (screaming) C.head.rotateZ(Math.sin(t * 55) * 0.05);
+  if (O && O.faceOn) {
+    // full face on to whoever it has: tipped back just enough to show the inside of the mouth, shaking with it
+    C.head.rotateX(-0.14 + Math.sin(t * 47) * 0.025);
+    C.head.rotateZ(Math.sin(t * 55) * 0.05 + Math.sin(t * 3.1) * 0.12);
+  } else {
+    C.head.rotateX(-0.2 - C.jaw * 0.25 + (tw.t > 0 ? tw.x : 0));
+    C.head.rotateY(tw.t > 0 ? tw.y : Math.sin(t * 0.6) * 0.1);
+    // crawling, it turns its head sideways, sometimes almost upside down
+    const roll = (1 - u) * (0.9 + 0.5 * Math.sin(t * 0.23)) * (mode === 'run' ? 0.5 : 1) + (tw.t > 0 ? tw.z : 0) + Math.sin(t * 0.5) * 0.15;
+    C.head.rotateZ(roll);
+    if (screaming) C.head.rotateZ(Math.sin(t * 55) * 0.05);
+  }
   C.jawPivot.rotation.x = C.jaw;
   // The head is checked point by point against the actual skull, jaw and teeth - open jaw included - and
   // backed off anything it would touch. The neck bends to follow it rather than letting it through.

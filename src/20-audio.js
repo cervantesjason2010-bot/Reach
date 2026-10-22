@@ -449,6 +449,14 @@ const Sound = (() => {
         noiseHit(t, 3.5, 'lowpass', 90, 1, 1.6, P, 0.95);
         noiseHit(t + 0.4, 4.0, 'bandpass', 320, 0.5, 0.25, P, 0.95);
         break; }
+      // thunder: the crack of it overhead, and the long roll of it going away over the city
+      case 'thunder': { const P = far(pos, 150, 0.15);
+        noiseHit(t, 0.3, 'highpass', 700, 0.7, 0.8, P, 0.6);
+        noiseHit(t + 0.04, 0.9, 'bandpass', 380, 0.6, 0.9, P, 0.8);
+        noiseHit(t + 0.1, 4.2, 'lowpass', 150, 1, 1.5, P, 0.95);
+        noiseHit(t + 0.8, 4.8, 'lowpass', 85, 1, 1.1, P, 0.95);
+        tone(t + 0.05, 44, 3.2, 'sine', 0.7, P, 30, 0.9);
+        break; }
       // its voice, if it is a voice: a moan so low it is mostly the ground shaking
       case 'colossusCall': { const P = far(pos, 80, 0.25);
         const g = gain(0); env(g, t, 1.2, 0.9, 2.5, 3.0);

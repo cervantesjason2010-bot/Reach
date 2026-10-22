@@ -10,19 +10,62 @@ const P_MOUTH = [0.12, 0.03, 0.04], P_SHADOW = [0.42, 0.4, 0.4];
 const PALE_HEAD_BOX = [[-0.125, 2.5, -0.17], [0.125, 2.94, 0.19]];
 const PALE_HAND_BOX = [[0.38, 0.8, -0.08], [0.53, 1.235, 0.12]];
 const PALE_FOOT_BOX = [[0.05, -0.03, -0.1], [0.21, 0.13, 0.32]];
-const PALE_FINE = [PALE_HEAD_BOX, PALE_HAND_BOX, mirrorBox(PALE_HAND_BOX), PALE_FOOT_BOX, mirrorBox(PALE_FOOT_BOX)];
+const PALE_CHEST_BOX = [[-0.188, 1.66, -0.162], [0.188, 2.332, 0.152]];
+const PALE_FINE = [PALE_HEAD_BOX, PALE_HAND_BOX, mirrorBox(PALE_HAND_BOX), PALE_FOOT_BOX, mirrorBox(PALE_FOOT_BOX), PALE_CHEST_BOX];
 // fingers: [z offset, first joint, second joint, thickness]
 const PALE_FINGERS = [[0.032, 0.11, 0.09, 1], [0.011, 0.122, 0.1, 1.05], [-0.01, 0.116, 0.096, 1], [-0.03, 0.096, 0.08, 0.88]];
 const PALE_TOES = [[0.103, 0.255], [0.118, 0.272], [0.133, 0.268], [0.148, 0.258], [0.161, 0.24]];
-// its ribs: one pair of arcs a rung, back to front, the lower ones flaring out past a waist there is nothing in
+// Its rib cage, the whole of it, standing out under skin pulled tight. Twelve pairs: the top one short and tight
+// under the collarbones, the middle ones widest, the lowest flaring out past a waist there is nothing in - every
+// one sloping down from the spine to the front, round and thin as a broom handle. The seven true ribs are joined
+// to the breastbone by their cartilage; the next three to the cartilage above, which makes the arch it caves in
+// under; the last two float free. Meshed finer than the rest of it (PALE_CHEST_BOX), so every rib is there to count.
+// the torso the ribs lie over: the chest, a fuller cage under it, and the skin of the lower cage
+const PALE_TORSO = [[0, 2.0, -0.035, 0.145, 0.22, 0.108], [0, 2.04, -0.02, 0.14, 0.24, 0.105], [0, 1.84, -0.025, 0.142, 0.17, 0.096]];
+function paleTorsoAt(y) {
+  let rx = 0.04, rz = 0.04;
+  for (const [, cy, cz, ax, ay, az] of PALE_TORSO) { const q = (y - cy) / ay; if (Math.abs(q) < 1) { const k = Math.sqrt(1 - q * q); rx = Math.max(rx, ax * k); rz = Math.max(rz, az * k + (cz + 0.025)); } }
+  return [rx, rz];
+}
+// a point on the front of the torso, just proud of the skin
+function paleFront(x, y, out = 0.004) { const [rx, rz] = paleTorsoAt(y); return [x, y, -0.025 + rz * Math.sqrt(Math.max(0, 1 - (x / rx) * (x / rx))) + out]; }
+// rib i at angle th round the body (0 the front, pi the spine): lying on the skin, standing just out of it - and
+// the two lowest flaring out away from it at the sides
+function paleRibAt(i, th) {
+  const yb = 2.275 - i * 0.046, drop = 0.06 + i * 0.011, y = yb - drop * Math.pow(1 - th / Math.PI, 1.25);
+  const [rx, rz] = paleTorsoAt(y), flare = i >= 10 ? (i - 9) * 0.013 * Math.sin(th) : 0;
+  return [(rx + 0.004 + flare) * Math.sin(th), y, -0.025 + (rz + 0.004) * Math.cos(th)];
+}
 const paleRibs = () => {
   const out = [];
-  for (let i = 0; i < 7; i++) {
-    const y = 2.17 - i * 0.056, q = (y - 2.0) / 0.26, w = 0.15 * Math.sqrt(Math.max(0, 1 - q * q)) + 0.012 + i * 0.002;
-    const bone = i < 5 ? 'chest' : 'spine';
-    out.push({ c: [0.04, y - 0.075, 0.104, w, y - 0.02, 0.03, 0.013, 0.015], bone, k: 0.016, sym: true, tint: P_BONE });
-    out.push({ c: [w, y - 0.02, 0.03, w * 0.72, y + 0.02, -0.1, 0.015, 0.013], bone, k: 0.016, sym: true });
+  // the ribs themselves, five lengths of bone each side
+  for (let i = 0; i < 12; i++) {
+    const th0 = i <= 6 ? 0.42 + i * 0.02 : i <= 9 ? 0.62 + (i - 7) * 0.1 : 1.15 + (i - 10) * 0.25, th1 = Math.PI - 0.2;
+    const r = 0.0095 + 0.0018 * Math.sin(Math.PI * (i + 1) / 13), bone = i <= 6 ? 'chest' : 'spine';
+    for (let k = 0; k < 5; k++) {
+      const a = paleRibAt(i, lerp(th0, th1, k / 5)), b = paleRibAt(i, lerp(th0, th1, (k + 1) / 5));
+      out.push({ c: [...a, ...b, k === 0 ? r * 0.82 : r, r], bone, k: 0.012, sym: true, tint: P_BONE });
+    }
+    // the cartilage at the front: to the breastbone, or up to the rib above, or nothing
+    const f = paleRibAt(i, th0);
+    if (i <= 6) {
+      const st = paleFront(0.019, 2.205 - i * 0.043), m = paleFront(lerp(f[0], st[0], 0.55), Math.max(f[1], st[1]) - 0.004 - i * 0.002);
+      out.push({ c: [...f, ...m, r * 0.8, 0.0072], bone: 'chest', k: 0.012, sym: true, tint: P_BONE });
+      out.push({ c: [...m, ...st, 0.0072, 0.0064], bone: 'chest', k: 0.012, sym: true, tint: P_BONE });
+    } else if (i <= 9) {
+      const up = paleFront([0.034, 0.058, 0.087][i - 7], [1.917, 1.872, 1.832][i - 7]);
+      out.push({ c: [...f, ...up, r * 0.8, 0.0068], bone: 'chest', k: 0.012, sym: true, tint: P_BONE });
+    }
   }
+  // the breastbone: the broad top of it, the blade, the point at the bottom
+  const s0 = paleFront(0, 2.245, 0.006), s1 = paleFront(0, 2.1, 0.008), s2 = paleFront(0, 1.94, 0.007), s3 = paleFront(0, 1.893, 0.003);
+  out.push({ e: [...s0, 0.031, 0.027, 0.012], bone: 'chest', k: 0.012, tint: P_BONE });
+  out.push({ c: [...s0, ...s1, 0.016, 0.015], bone: 'chest', k: 0.014, tint: P_BONE });
+  out.push({ c: [...s1, ...s2, 0.015, 0.013], bone: 'chest', k: 0.014, tint: P_BONE });
+  out.push({ c: [...s2, ...s3, 0.0085, 0.004], bone: 'chest', k: 0.01, tint: P_BONE });
+  // the cage under the skin, which the ribs lie over (the chest itself is in the shapes)
+  out.push({ e: PALE_TORSO[1], bone: 'chest', k: 0.04 });
+  out.push({ e: PALE_TORSO[2], bone: 'spine', k: 0.03 });
   return out;
 };
 const paleSpine = () => {
@@ -53,8 +96,6 @@ const PALE_DEF = {
     { c: [0, 1.42, -0.025, 0, 1.8, -0.045, 0.082, 0.098], bone: 'spine', k: 0.05 },
     { e: [0.04, 1.62, -0.072, 0.036, 0.13, 0.036], bone: 'spine', k: 0.03, sym: true },
     { e: [0, 2.0, -0.035, 0.145, 0.22, 0.108], bone: 'chest', k: 0.05 },
-    { e: [0.068, 2.13, 0.035, 0.07, 0.06, 0.04], bone: 'chest', k: 0.03, sym: true },
-    { c: [0, 2.19, 0.098, 0, 1.92, 0.112, 0.018, 0.014], bone: 'chest', k: 0.02, tint: P_BONE },
     ...paleRibs(),
     ...paleSpine(),
     { e: [0.1, 2.15, -0.112, 0.064, 0.086, 0.026], rot: [0, 0.3, 0.15], bone: 'chest', k: 0.025, sym: true, tint: P_BONE },
@@ -123,6 +164,7 @@ const PALE_DEF = {
   ],
   parts: [
     { name: 'body', lo: [-0.56, -0.05, -0.24], hi: [0.56, 3.0, 0.36], h: 0.014, keep: (x, y, z) => !PALE_FINE.some((b) => inBox(b, x, y, z, 0.014)) },
+    { name: 'chest', fine: true, lo: growBox(PALE_CHEST_BOX, 0.03)[0], hi: growBox(PALE_CHEST_BOX, 0.03)[1], h: 0.0072, keep: (x, y, z) => inBox(PALE_CHEST_BOX, x, y, z) },
     { name: 'head', fine: true, lo: growBox(PALE_HEAD_BOX, 0.03)[0], hi: growBox(PALE_HEAD_BOX, 0.03)[1], h: 0.006, keep: (x, y, z) => inBox(PALE_HEAD_BOX, x, y, z) },
     { name: 'handL', fine: true, lo: growBox(PALE_HAND_BOX, 0.03)[0], hi: growBox(PALE_HAND_BOX, 0.03)[1], h: 0.0055, keep: (x, y, z) => inBox(PALE_HAND_BOX, x, y, z) },
     { name: 'handR', fine: true, lo: growBox(mirrorBox(PALE_HAND_BOX), 0.03)[0], hi: growBox(mirrorBox(PALE_HAND_BOX), 0.03)[1], h: 0.0055, keep: (x, y, z) => inBox(mirrorBox(PALE_HAND_BOX), x, y, z) },
@@ -222,14 +264,19 @@ function paleClick() { Pale.gruntT = 0.5; }
 function setPaleVisible(v) { setBeastVisible(Pale, v); }
 
 // ================= the host's Pale =================
-// It prowls at a long, light walk, and when something moves in front of it, it goes for it at a run you can
-// only beat flat out. It turns fast. It loses you the moment you stop: then it goes to where you were, and
-// looks. If it finds you there - right there, close enough to touch - it leans in, and waits for you to move.
+// It prowls at a long, light walk, working its way round every room of its floor, and when something moves in
+// front of it, it goes for it at a run you can only beat flat out. It turns fast. It loses you the moment you
+// stop: then it goes to where you were going, and looks. If it finds you there - right there, close enough to
+// touch - it leans in, and waits for you to move. And if you don't, it gives up on you: it straightens, turns
+// away and walks off, a long way, and for a while it leaves the place where you are standing alone.
 const PALE_WALK = 1.55, PALE_HUNT = 4.3, PALE_GRAB = 1.5;
+const PALE_SNIFF_COOL = 24;      // how long it leaves someone be after it has looked them over and found nothing
+const PALE_VISIT = 4;            // the size of the squares of floor it remembers walking, to work round the whole area
 function paleNewRound(g) {
   const L = Game.L, first = L.chudSpots.findIndex((s) => !!s), sp = L.chudSpots[first] || { x: 0, z: 0 };
   g.pa = { x: r2(sp.x), z: r2(sp.z), y: 0, s: 0, m: first >= 0 ? 'idle' : 'hidden', a: first, lx: 0, lz: 0, sn: 0 };
-  Game.ps = { state: 'idle', timer: 4, path: null, pi: 0, sus: {}, target: null, last: null, area: first, relocate: -1, stuck: 0, sniff: null };
+  Game.ps = { state: 'idle', timer: 4, path: null, pi: 0, sus: {}, target: null, last: null, tv: null, area: first, relocate: -1, stuck: 0, sniff: null,
+    cool: {}, avoid: [], visited: {}, goal: null, lostT: 0 };
 }
 // where it can go: anywhere a person can stand except the shelters, through any door that is open
 function paleCellOk(L, k, open) { return !!L.cwalk[k] && (L.lockAt[k] < 0 || !!open[L.lockAt[k]]); }
@@ -258,6 +305,7 @@ function paleTick(g, living, players, dt, open) {
     if (ps.relocate <= 0 && !watched) {
       const sp = L.chudSpots[g.ca];
       pa.x = r2(sp.x); pa.z = r2(sp.z); pa.a = g.ca; ps.area = g.ca; ps.state = 'idle'; ps.timer = 3; ps.path = null; ps.sus = {}; ps.target = null; ps.relocate = -1; ps.sniff = null;
+      ps.cool = {}; ps.avoid = []; ps.visited = {}; ps.goal = null; ps.tv = null;
       pa.m = 'idle'; pa.s = 0;
     }
   }
@@ -266,7 +314,7 @@ function paleTick(g, living, players, dt, open) {
   if (g.lift && g.lift.st === 1 && !ps.drawn && ps.area === L.areas.length - 1) {
     ps.drawn = true;
     const dev = L.devices.find((d) => d.type === 'u');
-    if (dev) { ps.state = 'hunt'; ps.last = { x: dev.x, z: dev.z }; ps.path = null; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: '' }); }
+    if (dev) { ps.state = 'hunt'; ps.last = { x: dev.x, z: dev.z }; ps.tv = null; ps.path = null; ps.lostT = 0; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: '' }); }
   }
   // who is it watching move, and how sure is it
   let best = null, bestS = 0;
@@ -276,20 +324,30 @@ function paleTick(g, living, players, dt, open) {
     if (v > 0 && ps.sus[p.id] >= 0.6 && (!best || ps.sus[p.id] > bestS)) { best = p; bestS = ps.sus[p.id]; }
   }
   for (const id in ps.sus) if (!living.some((p) => p.id === id)) delete ps.sus[id];
-  if (ps.state === 'grab') { ps.timer -= dt; pa.s = 0; if (ps.timer <= 0) { ps.state = 'search'; ps.timer = 4; } return; }
+  for (const id in ps.cool) if (ps.cool[id] < g.t) delete ps.cool[id];
+  if (ps.avoid.length) ps.avoid = ps.avoid.filter((a) => a.until > g.t);
+  if (ps.state === 'grab') { ps.timer -= dt; pa.s = 0; if (ps.timer <= 0) { ps.state = 'search'; ps.timer = 4; ps.goal = null; ps.searchAt = { x: pa.x, z: pa.z }; } return; }
   // close enough to touch someone it has just seen move: it takes them
   for (const p of living) {
     const d = dist2(p.x, p.z, pa.x, pa.z);
     if (d < PALE_GRAB && (ps.sus[p.id] || 0) >= 0.5 && !safeAt(L, p.x, p.z)) { paleTake(g, p); return; }
   }
   if (best) {
-    if (ps.state !== 'hunt' && ps.state !== 'notice') { ps.state = 'notice'; ps.timer = 0.38; ps.sniff = null; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: best.id }); }
-    ps.target = best.id; ps.last = { x: best.x, z: best.z };
+    if (ps.state !== 'hunt' && ps.state !== 'notice') { ps.state = 'notice'; ps.timer = 0.38; ps.sniff = null; ps.tv = null; hostEvent(g, 'paleSaw', { x: r2(pa.x), z: r2(pa.z), who: best.id }); }
+    // the way they are going, smoothed, for when it loses them
+    if (ps.target === best.id && ps.last && dt > 0) {
+      const tv = ps.tv || (ps.tv = { x: 0, z: 0 }), k = 1 - Math.exp(-dt * 3);
+      tv.x += (clamp((best.x - ps.last.x) / dt, -6, 6) - tv.x) * k; tv.z += (clamp((best.z - ps.last.z) / dt, -6, 6) - tv.z) * k;
+    } else ps.tv = { x: 0, z: 0 };
+    // seen moving: whatever it decided about them before no longer holds
+    delete ps.cool[best.id];
+    ps.target = best.id; ps.last = { x: best.x, z: best.z }; ps.lostT = 0;
   }
-  // someone standing dead still right in its way: it stops, and leans in, and looks
-  if (!best && ps.state !== 'sniff' && ps.state !== 'notice') {
-    const close = living.find((p) => dist2(p.x, p.z, pa.x, pa.z) < 1.7 && !safeAt(L, p.x, p.z));
-    if (close) { ps.state = 'sniff'; ps.timer = 2.4 + Math.random() * 1.6; ps.sniff = close.id; ps.path = null; }
+  // Someone standing dead still right in its way: it stops, and leans in, and looks. Only when it is not
+  // already going somewhere on purpose, and only once: someone it has looked over, it leaves be for a while.
+  if (!best && (ps.state === 'idle' || ps.state === 'wander' || ps.state === 'search')) {
+    const close = living.find((p) => dist2(p.x, p.z, pa.x, pa.z) < 1.7 && !safeAt(L, p.x, p.z) && !(ps.cool[p.id] > g.t));
+    if (close) { ps.state = 'sniff'; ps.timer = 2.6 + Math.random() * 1.8; ps.sniff = close.id; ps.path = null; }
   }
   let goal = null, speed = 0;
   if (ps.state === 'notice') {
@@ -299,11 +357,13 @@ function paleTick(g, living, players, dt, open) {
     if (ps.timer <= 0) { ps.state = 'hunt'; ps.path = null; }
   } else if (ps.state === 'hunt') {
     goal = ps.last; speed = PALE_HUNT;
-    // it has lost whoever it was after: it slows as it comes to where they were
     if (!best && ps.last) {
+      // It has lost whoever it was after. It runs on to where they were, slowing as it gets there - then
+      // looks on from there, the way they were going.
+      ps.lostT += dt;
       const d = dist2(pa.x, pa.z, ps.last.x, ps.last.z);
       speed = d < 5 ? PALE_WALK * 1.4 : PALE_HUNT * 0.8;
-      if (d < 1.9) { ps.state = 'search'; ps.timer = 5 + Math.random() * 3; ps.path = null; ps.goal = null; }
+      if (d < 1.9 || ps.lostT > 7) paleSearch(g, living, open, 6 + Math.random() * 3);
     }
   } else if (ps.state === 'sniff') {
     // leaning in, its face a hand's width from yours: if you move now, it has you
@@ -313,25 +373,34 @@ function paleTick(g, living, players, dt, open) {
     else {
       pa.y = dampAngle(pa.y, Math.atan2(p.x - pa.x, p.z - pa.z), 4, dt);
       if ((p.mv || 0) > 0.35 || p.h) { ps.sus[p.id] = 1.2; paleTake(g, p); return; }
-      if (ps.timer <= 0) { ps.state = 'wander'; ps.goal = paleWanderPoint(g, living, ps.area, p); ps.path = null; ps.sniff = null; }
+      // nothing: it gives up on them, and goes - a long way
+      if (ps.timer <= 0) paleLeave(g, living, p, open);
     }
+  } else if (ps.state === 'leave') {
+    // walking off, not looking back: on to the far side of the room, or into the next one
+    goal = ps.goal; speed = PALE_WALK * 1.15;
+    if (!goal || dist2(pa.x, pa.z, goal.x, goal.z) < 1.0) { ps.state = 'idle'; ps.timer = 2 + Math.random() * 3; ps.goal = null; }
   } else if (ps.state === 'search') {
     // it prowls round where it lost you, a step at a time, turning its head
     ps.timer -= dt;
     if (!ps.goal || dist2(pa.x, pa.z, ps.goal.x, ps.goal.z) < 0.6) {
       ps.pause = (ps.pause || 0) - dt;
-      if (ps.pause <= 0 && ps.last) {
-        for (let k = 0; k < 12; k++) {
-          const a = Math.random() * Math.PI * 2, r = 1.8 + Math.random() * 2.6, x = ps.last.x + Math.sin(a) * r, z = ps.last.z + Math.cos(a) * r;
-          if (paleOk(L, x, z, open) && !living.some((p) => dist2(p.x, p.z, x, z) < 1.4)) { ps.goal = { x, z }; break; }
+      const at = ps.searchAt || ps.last;
+      if (ps.pause <= 0 && at) {
+        ps.goal = null;
+        for (let k = 0; k < 14; k++) {
+          const a = Math.random() * Math.PI * 2, r = 1.8 + Math.random() * 3.2, x = at.x + Math.sin(a) * r, z = at.z + Math.cos(a) * r;
+          if (paleOk(L, x, z, open) && lineOfSight(L, at.x, at.z, x, z, open) && !living.some((p) => dist2(p.x, p.z, x, z) < 1.4)) { ps.goal = { x, z }; break; }
         }
         ps.pause = 0.8 + Math.random() * 1.2;
       }
     } else { goal = ps.goal; speed = PALE_WALK * 0.8; }
     pa.y += Math.sin(g.t * 1.3) * dt * 1.2;
-    if (ps.timer <= 0) { ps.state = 'idle'; ps.timer = 2; ps.target = null; ps.goal = null; }
+    if (ps.timer <= 0) { ps.state = 'idle'; ps.timer = 2; ps.target = null; ps.goal = null; ps.searchAt = null; }
   } else if (ps.state === 'idle') {
+    // standing, listening for nothing - it does not hear - just looking, its head going slowly round
     ps.timer -= dt;
+    pa.y += Math.sin(g.t * 0.8) * dt * 0.9;
     if (ps.timer <= 0) { ps.state = 'wander'; ps.goal = paleWanderPoint(g, living, ps.area); ps.path = null; }
   } else if (ps.state === 'wander') {
     goal = ps.goal; speed = PALE_WALK;
@@ -339,34 +408,87 @@ function paleTick(g, living, players, dt, open) {
   }
   pa.s = 0;
   if (goal && speed > 0) paleMove(g, ps, goal, speed, dt, open);
+  (ps.visited || (ps.visited = {}))[Math.floor(pa.x / PALE_VISIT) + ',' + Math.floor(pa.z / PALE_VISIT)] = g.t;
   pa.m = ps.state === 'hunt' || ps.state === 'notice' ? 'hunt' : ps.state === 'sniff' ? 'sniff' : ps.state === 'search' ? 'search' : pa.s > 0.05 ? 'walk' : 'idle';
   const tgt = ps.state === 'sniff' ? living.find((p) => p.id === ps.sniff) : ps.target && living.find((p) => p.id === ps.target);
   if (tgt && (ps.state === 'hunt' || ps.state === 'notice' || ps.state === 'sniff')) { pa.lx = r2(tgt.x); pa.lz = r2(tgt.z); } else { pa.lx = 0; pa.lz = 0; }
   pa.sn = ps.state === 'sniff' ? 1 : 0;
   pa.x = r2(pa.x); pa.z = r2(pa.z); pa.y = r2(wrapAngle(pa.y)); pa.s = r2(pa.s);
 }
-// somewhere in its area to go and stand - often near the team, never right on top of anyone
+// lost them: look round where they were heading - as far on as the floor allows, a second or two of their going
+function paleSearch(g, living, open, time) {
+  const L = Game.L, ps = Game.ps, from = ps.last || { x: g.pa.x, z: g.pa.z }, tv = ps.tv || { x: 0, z: 0 }, sp = Math.hypot(tv.x, tv.z);
+  let at = from;
+  if (sp > 0.4) {
+    const dx = tv.x / sp, dz = tv.z / sp;
+    for (let d = 0.5; d <= Math.min(6, sp * 1.6); d += 0.5) {
+      const x = from.x + dx * d, z = from.z + dz * d;
+      if (!paleOk(L, x, z, open) || !lineOfSight(L, from.x, from.z, x, z, open)) break;
+      at = { x, z };
+    }
+  }
+  ps.state = 'search'; ps.timer = time; ps.path = null; ps.goal = at === from ? null : at; ps.searchAt = at; ps.pause = 0;
+}
+// It has looked someone over and found nothing: it straightens, turns away, and walks off somewhere well away
+// from them - and for a while it will not come back to where they are standing, or lean in on them again.
+function paleLeave(g, living, p, open) {
+  const ps = Game.ps;
+  ps.cool[p.id] = g.t + PALE_SNIFF_COOL;
+  ps.avoid.push({ x: p.x, z: p.z, r: 9, until: g.t + PALE_SNIFF_COOL });
+  ps.sniff = null; ps.path = null; ps.target = null;
+  ps.goal = paleLeavePoint(g, living, ps.area, p, open);
+  ps.state = ps.goal ? 'leave' : 'idle'; ps.timer = 2;
+}
+function paleLeavePoint(g, living, area, from, open) {
+  const L = Game.L, A = L.areas[area], pa = g.pa; if (!A) return null;
+  let best = null, bs = -1e9;
+  for (let k = 0; k < 60; k++) {
+    const gx = Math.floor(A.offX + 1 + Math.random() * (A.w - 2)), gz = Math.floor(A.offZ + 1 + Math.random() * (A.h - 2));
+    if (!inGrid(L, gx, gz) || L.area[gz * L.W + gx] !== area || !paleCellOk(L, gz * L.W + gx, open) || L.lockAt[gz * L.W + gx] >= 0) continue;
+    const x = gx + 0.5, z = gz + 0.5, d = dist2(x, z, from.x, from.z);
+    if (d < 8) continue;
+    let near = 99; for (const q of living) near = Math.min(near, dist2(q.x, q.z, x, z));
+    // well away from them, and from everyone, out of their sight if it can be, and not a marathon to get to
+    const sc = Math.min(d, 18) + Math.min(near, 14) * 0.5 + (lineOfSight(L, from.x, from.z, x, z, open) ? 0 : 6) - dist2(x, z, pa.x, pa.z) * 0.15 + Math.random() * 3;
+    if (sc > bs && navPath(L, (kk) => paleCellOk(L, kk, open), pa.x, pa.z, x, z)) { bs = sc; best = { x, z }; }
+  }
+  return best;
+}
+// Somewhere in its area to go and stand. It works its way round the whole floor - the parts it has not walked
+// lately first - and drifts toward wherever the team is, but never right on top of anyone, and never back to
+// someone it has just given up on.
 function paleWanderPoint(g, living, area, away) {
-  const L = Game.L, A = L.areas[area]; if (!A) return null;
+  const L = Game.L, A = L.areas[area], ps = Game.ps, pa = g.pa; if (!A) return null;
   const near = living.filter((p) => areaAt(L, p.x, p.z) === area);
+  let best = null, bs = -1e9;
   for (let k = 0; k < 50; k++) {
     let x, z;
-    if (near.length && Math.random() < 0.55) { const p = near[Math.floor(Math.random() * near.length)]; x = p.x + (Math.random() - 0.5) * 16; z = p.z + (Math.random() - 0.5) * 16; }
+    if (near.length && Math.random() < 0.4) { const p = near[Math.floor(Math.random() * near.length)]; x = p.x + (Math.random() - 0.5) * 18; z = p.z + (Math.random() - 0.5) * 18; }
     else { x = A.offX + 1 + Math.random() * (A.w - 2); z = A.offZ + 1 + Math.random() * (A.h - 2); }
     const gx = Math.floor(x), gz = Math.floor(z);
     if (!inGrid(L, gx, gz) || !L.cwalk[gz * L.W + gx] || L.area[gz * L.W + gx] !== area || L.lockAt[gz * L.W + gx] >= 0) continue;
-    if (away && dist2(gx + 0.5, gz + 0.5, away.x, away.z) < 5) continue;
-    if (living.some((p) => dist2(p.x, p.z, gx + 0.5, gz + 0.5) < 2)) continue;
-    return { x: gx + 0.5, z: gz + 0.5 };
+    const cx = gx + 0.5, cz = gz + 0.5;
+    if (away && dist2(cx, cz, away.x, away.z) < 5) continue;
+    if (living.some((p) => dist2(p.x, p.z, cx, cz) < 2)) continue;
+    if (ps && ps.avoid.some((a) => dist2(a.x, a.z, cx, cz) < a.r)) continue;
+    const v = ps && ps.visited ? ps.visited[Math.floor(cx / PALE_VISIT) + ',' + Math.floor(cz / PALE_VISIT)] : undefined;
+    const since = Math.min(v === undefined ? 120 : g.t - v, 120), d = dist2(cx, cz, pa.x, pa.z);
+    const sc = since - Math.max(0, d - 14) * 1.5 + Math.random() * 20;
+    if (sc > bs) { bs = sc; best = { x: cx, z: cz }; }
   }
-  return null;
+  return best;
 }
 function paleMove(g, ps, goal, speed, dt, open) {
   const L = Game.L, pa = g.pa, ok = (k) => paleCellOk(L, k, open);
   ps.repath = (ps.repath || 0) - dt;
   if (!ps.path || ps.repath <= 0 || !ps.pgoal || dist2(ps.pgoal.x, ps.pgoal.z, goal.x, goal.z) > 1.2) {
     ps.path = navPath(L, ok, pa.x, pa.z, goal.x, goal.z); ps.pi = 0; ps.pgoal = { x: goal.x, z: goal.z }; ps.repath = 0.9;
-    if (!ps.path) { ps.state = ps.state === 'hunt' ? 'search' : 'idle'; ps.timer = 3; return; }
+    if (!ps.path) {
+      // nowhere it can get to from here: hunting, it looks round where it is; otherwise it picks somewhere else
+      if (ps.state === 'hunt') paleSearch(g, [], open, 4);
+      else { ps.state = 'idle'; ps.timer = 1 + Math.random(); ps.goal = null; }
+      return;
+    }
   }
   const wp = ps.path[ps.pi]; if (!wp) return;
   const dx = wp.x - pa.x, dz = wp.z - pa.z, d = Math.hypot(dx, dz);
@@ -377,7 +499,12 @@ function paleMove(g, ps, goal, speed, dt, open) {
   const face = Math.cos(wrapAngle(want - pa.y)), v = speed * clamp(face, 0.2, 1);
   const nx = pa.x + Math.sin(pa.y) * v * dt, nz = pa.z + Math.cos(pa.y) * v * dt;
   if (paleOk(L, nx, nz, open)) { pa.x = nx; pa.z = nz; pa.s = v; ps.stuck = 0; }
-  else { ps.stuck += dt; if (ps.stuck > 1.2) { ps.path = null; ps.stuck = 0; } }
+  else {
+    // a corner clipped: slide along whichever way is open, and if that fails for long, think again
+    if (paleOk(L, nx, pa.z, open)) { pa.x = nx; pa.s = v * 0.6; }
+    else if (paleOk(L, pa.x, nz, open)) { pa.z = nz; pa.s = v * 0.6; }
+    ps.stuck += dt; if (ps.stuck > 1.2) { ps.path = null; ps.stuck = 0; }
+  }
 }
 function paleTake(g, p) {
   const ps = Game.ps, pa = g.pa;

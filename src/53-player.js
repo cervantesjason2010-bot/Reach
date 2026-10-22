@@ -399,10 +399,11 @@ function processGameEvents() {
 function onLocalDeath() {
   Sound.play('grab');
   buzz([90, 60, 220]);
-  // no jump scare: whoever it catches lives through the whole drag and beating, mic open and a little louder
+  // On B5 and A1 whoever it catches lives through all of it, mic open and a little louder. On B4 it is over
+  // in a second: its face in yours, and black.
   Game.scare = { t: 0, n: 0, from: R.camera.position.clone(), x: Game.me.x, z: Game.me.z };
   Sound.voiceBoost(true);
-  showDeath(Game.g && levelHasBeast(Game.g.lv) ? beastKillLen(Game.g.kl) * 1000 + 200 : Creature.visible ? KILL_TOTAL * 1000 + 100 : 1300);
+  showDeath(Game.g && levelHasBeast(Game.g.lv) ? beastKillLen(Game.g.kl) * 1000 + 200 : Creature.visible ? JUMP_END * 1000 + 450 : 1300);
 }
 
 // ---------- teammates ----------
@@ -434,8 +435,8 @@ function updateMates(dt, t) {
     if (!m.dead) Game.corpses.delete(p.id);
     // Dead is not gone. While it has them, everyone sees what it is doing to them; afterwards, they lie where
     // it left them until the team brings them back.
-    const kl = g.kl, beastKill = m.dead && kl && kl.c && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < beastKillLen(kl);
-    const killing = beastKill || (m.dead && kl && !kl.c && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
+    const kl = g.kl, beastKill = m.dead && isBeastKill(kl) && kl.id === p.id && Game.gt !== undefined && Game.gt - kl.t < beastKillLen(kl);
+    const killing = beastKill || (m.dead && kl && !isBeastKill(kl) && kl.id === p.id && KS.T <= KILL_TOTAL && Creature.override && Creature.override.kill);
     const corpse = m.dead && !killing ? Game.corpses.get(p.id) : null;
     m.h.root.visible = (Game.mode !== 'end' || (Cinema.mode === 'ending' && !Cinema.teaser && !Cinema.surface)) && (!m.dead || !!killing || !!corpse);
     if (killing) poseBody(m.h, beastKill ? beastKillBody(kl, Game.gt - kl.t) : KS, t, p.id.length);

@@ -5,36 +5,27 @@
 // numbers against the host's clock. So the one it has, watching through their own eyes, and everyone else,
 // watching it happen to their friend, see exactly the same thing at the same moment.
 
-const KILL_DRAG = 1.8;             // hauled along the floor by the ankle, out of wherever they thought was safe
-// After the drag: [time, lift 0..1 (the floor .. as high as the room allows), roll of the victim's view,
-// grip: 0 by the ankle (hanging upside down), 1 by the head, 2 let go]
+const KILL_DRAG = 0.55;            // snatched off their feet by the ankle - and, out of a shelter, yanked through the door
+// After the snatch: [time, lift 0..1 (the floor .. as high as the room allows), roll of the victim's view,
+// grip: 0 by the ankle (hanging upside down), 2 let go]. Short and brutal: up, down, up, down, dropped. The one
+// it has sees none of it - only its face, coming at them (see the play camera) - but everyone else does.
 const KILL_KEYS = [
-  // swept up by the ankle, all the way, and left hanging there while it looks at you
-  [0.00, 0.03, 0.40, 0], [0.30, 1.00, 3.05, 0], [0.62, 0.96, 3.14, 0], [0.95, 1.00, 3.10, 0],
-  // driven into the floor; hauled up; again
-  [1.26, 0.00, 3.14, 0], [1.44, 0.12, 3.00, 0], [1.80, 0.94, 3.10, 0], [2.10, 0.00, 3.14, 0],
-  // up once more, as high as it can - and thrown
-  [2.40, 1.00, 3.10, 0],
-  // (in the air: see KILL_TOSS) - caught by the head and held up to its face while it screams
-  [3.55, 0.92, 0.00, 1], [4.15, 1.00, 0.18, 1],
-  // and then it does not stop
-  [4.42, 0.00, 0.06, 1], [4.70, 0.88, 0.36, 1], [4.98, 0.00, 0.05, 1], [5.32, 0.84, 0.34, 1],
-  [5.56, 0.00, 0.05, 1], [5.92, 0.78, 0.36, 1], [6.16, 0.00, 0.05, 1], [6.54, 0.72, 0.33, 1],
-  [6.78, 0.00, 0.05, 1], [7.18, 0.64, 0.36, 1], [7.42, 0.00, 0.05, 1], [7.86, 0.56, 0.34, 1],
-  [8.10, 0.00, 0.05, 1], [8.58, 0.48, 0.36, 1], [8.84, 0.00, 0.05, 1], [9.37, 0.38, 0.33, 1],
-  [9.64, 0.00, 0.05, 1], [10.27, 0.28, 0.30, 1], [10.57, 0.00, 0.04, 1],
+  // swept up by the ankle, all the way, hanging there a moment
+  [0.00, 0.03, 0.40, 0], [0.32, 1.00, 3.05, 0], [0.58, 0.95, 3.14, 0],
+  // driven into the floor; hauled up again; and down, harder
+  [0.84, 0.00, 3.14, 0], [1.02, 0.16, 3.00, 0], [1.36, 0.78, 3.10, 0], [1.62, 0.00, 3.14, 0],
   // it lets go
-  [11.32, 0.00, 0.02, 2],
+  [2.05, 0.00, 3.14, 2],
 ];
-const KILL_TOSS = [2.40, 3.55];
-const KILL_END = 11.32;
+const KILL_TOSS = [99, 99];        // (no throw any more)
+const KILL_END = 2.05;
 const KILL_TOTAL = KILL_DRAG + KILL_END;
 const KILL_SECONDS = KILL_TOTAL + 0.4;   // how long the host keeps it busy with the body
 // every point where the lift touches the floor is a blow
 const KILL_SLAMS = KILL_KEYS.filter((k, i) => i > 0 && k[1] === 0 && k[3] !== 2).map((k) => k[0]);
 const BODY_LEN = 1.6;                    // eye to the soles of the feet
 
-const _kv = new THREE.Vector3(), _kw = new THREE.Vector3(), _kq = new THREE.Quaternion(), _kS = new THREE.Vector3();
+const _kv = new THREE.Vector3(), _kw = new THREE.Vector3(), _kq = new THREE.Quaternion(), _kS = new THREE.Vector3(), _kq2 = new THREE.Vector3();
 // The state of the body at one instant. head: where the victim's eyes are. hip and feet: the rest of it (the
 // body bends at the hips when it is dragged round a corner). grip: what the creature's hand is holding.
 // face: which way the front of them points. roll: the victim's view.
@@ -108,7 +99,7 @@ function killAt(kl, T, out) {
   let fx = kl.dx, fz = kl.dz; const fl = Math.hypot(fx, fz) || 1; fx /= fl; fz /= fl;
   const cx = kl.cx, cz = kl.cz, H = kl.h, Hh = Math.min(kl.h, 3.3);
   out.T = T; out.ceilHit = false; out.door = 0; out.hold = 0;
-  out.live = 1 - smoothstep(KILL_DRAG + 4, KILL_DRAG + 10, T);
+  out.live = 1 - smoothstep(KILL_DRAG + 1.0, KILL_DRAG + 1.65, T);
   if (T < KILL_DRAG) {
     // ---- dragged out by the ankle ----
     // Taken off their feet and hauled along the floor, feet first, the body trailing behind along exactly the
@@ -125,7 +116,7 @@ function killAt(kl, T, out) {
     if (fall < 1) {
       const p0 = P.pts[0] || out.feet;
       out.feet.x = lerp(p0.x, out.feet.x, fall); out.feet.z = lerp(p0.z, out.feet.z, fall);
-      const c0 = (kl.c || 9) - 0.15;    // crouched, if that is all the room there was
+      const c0 = (kl.ce || 9) - 0.15;    // crouched, if that is all the room there was
       _kv.set(p0.x, Math.min(HIP_UP, c0 * 0.55), p0.z); out.hip.lerpVectors(_kv, out.hip, fall);
       _kv.set(p0.x, Math.min(EYE_UP, c0), p0.z); out.head.lerpVectors(_kv, out.head, fall * fall);
     }
@@ -142,7 +133,7 @@ function killAt(kl, T, out) {
   const side = _kS.set(-fz, 0, fx);
   // Somewhere too low to lift anyone, let alone throw them - a crawlway, a duct - it never changes its grip:
   // it keeps hold of the ankle and beats them against the floor until it is done.
-  const low = (kl.c || 9) < 2.3;
+  const low = (kl.ce || 9) < 2.3;
   if (low && K >= KILL_TOSS[0]) {
     if (K < KILL_TOSS[1]) { _kk.u = 0.55 + 0.45 * Math.cos((K - KILL_TOSS[0]) * 4 * Math.PI / (KILL_TOSS[1] - KILL_TOSS[0])); _kk.roll = Math.PI; }
     else { killKey(K, _kk); _kk.roll = Math.PI - _kk.roll * 0.3; }
@@ -157,7 +148,7 @@ function killAt(kl, T, out) {
     const y0 = H - HIP_UP, yc = lerp(0.18, Hh, 0.92) - (EYE_UP - HIP_UP);
     const v0 = (yc - y0 + 4.9 * D * D) / D;
     let y = y0 + v0 * tau - 4.9 * tau * tau;
-    const top = (kl.c || 9) - 0.96;
+    const top = (kl.ce || 9) - 0.96;
     if (y > top) { y = top; out.ceilHit = true; }
     const hx = lerp(cx + fx * 1.3, cx + fx * 0.85, smooth01(k)) + fx * Math.sin(Math.PI * k) * 0.55;
     const hz = lerp(cz + fz * 1.3, cz + fz * 0.85, smooth01(k)) + fz * Math.sin(Math.PI * k) * 0.55;
@@ -194,7 +185,7 @@ function killAt(kl, T, out) {
 }
 // ---- by the ankle ----
 function ankleHeld(kl, K, fx, fz, cx, cz, H, out) {
-  out.phase = 1;
+  out.phase = _kk.gripK === 2 ? 4 : 1;
   out.u = _kk.u; out.roll = _kk.roll;
   const gy = lerp(0.16, H, _kk.u);
   const sway = Math.sin(K * 4.6) * 0.22 * smoothstep(1.4, 2.4, gy) * (1 - smoothstep(2.1, 2.4, K));
@@ -303,7 +294,25 @@ function updateKill(dt) {
   const wantHead = KS.phase === 0 ? null : KS.phase === 1 ? kl.h + 0.3 : Math.min(kl.h, 3.3) + 0.45;
   if (wantHead === null) Game.killStand = 0.25;
   else Game.killStand = clamp((Game.killStand === undefined ? 0.5 : Game.killStand) + (wantHead - C.headPos.y) * Math.min(dt, 0.05) * 0.9, 0.12, 1);
-  C.override = { kill: true, reach: reach.clone(), look: KS.head.clone(), scream: T > KILL_DRAG - 0.25 && T < KILL_TOTAL - 0.8 && (KS.hold > 0.5 || KS.phase === 2 || Math.sin(T * 1.7) > 0.6),
+  // (on the machine of the one it has, its mouth is wide open the whole time its face is in theirs)
+  const victim = !!Game.me && netMyId() === kl.id;
+  // The one it has: its head comes at their face on the end of its neck - all the way in at once, back a
+  // little, and in again - and stays there, screaming, until everything goes.
+  let headAt = null;
+  const sc = Game.scare;
+  if (victim && sc && T < JUMP_END) {
+    if (!sc.head) sc.head = C.headPos.clone();
+    const dir = _kv.subVectors(sc.head, sc.from).setY(0);
+    if (dir.lengthSq() < 1e-4) dir.set(Math.sin(C.yaw), 0, Math.cos(C.yaw)).negate();
+    dir.normalize();
+    const lunge = T < 0.16 ? smooth01(T / 0.16) : 1, gap = T < 0.16 ? 0.48 : T < 0.5 ? lerp(0.48, 0.6, smooth01((T - 0.16) / 0.34)) : lerp(0.6, 0.3, smooth01((T - 0.5) / 0.2));
+    const want = _kw.copy(sc.from).addScaledVector(dir, gap + 0.62); want.y = sc.from.y - 0.24;
+    headAt = new THREE.Vector3().lerpVectors(sc.head, want, lunge);
+    headAt.x += (Math.random() - 0.5) * 0.03; headAt.y += (Math.random() - 0.5) * 0.03;
+    // and its arm is down, out of the way, the hand open under your chin
+    reach = _kS.copy(sc.from).addScaledVector(dir, 0.85).add(_kq2.set(dir.z * 0.3, -1.25, -dir.x * 0.3));
+  }
+  C.override = { kill: true, reach: reach.clone(), headAt, faceOn: !!headAt, look: victim && T < JUMP_END && sc ? sc.from.clone() : KS.head.clone(), scream: (victim && T < JUMP_END) || (T > KILL_DRAG - 0.25 && T < KILL_TOTAL - 0.8 && (KS.hold > 0.5 || KS.phase === 2 || Math.sin(T * 1.7) > 0.6)),
     stand: Game.killStand, door: KS.door };
   // what happens, as it happens - heard by everyone, from where it happens
   const last = Game.killLast === undefined || Game.killLast < 0 || Game.killLast > T ? Math.max(0, T - dt) : Game.killLast;
@@ -321,8 +330,12 @@ function updateKill(dt) {
     else if (me) { const d = dist2(me.x, me.z, pos.x, pos.z); R.shake = Math.max(R.shake || 0, clamp(1.3 - d * 0.1, 0, 1.3)); R.hit = Math.max(R.hit || 0, clamp(1 - d * 0.08, 0, 1)); }
   }
   if (crossed(KILL_DRAG + KILL_TOSS[0])) Sound.whoosh(pos);
-  if (KS.ceilHit && !Game.killCeil) { Game.killCeil = true; Sound.bang('c', pos, mine ? 1 : 0); debrisBurst(pos.x, kl.c - 0.05, pos.z, 'c', 0.8); if (mine) { R.shake = Math.max(R.shake, 2.4); R.whiteFlash = 0.05; } }
+  if (KS.ceilHit && !Game.killCeil) { Game.killCeil = true; Sound.bang('c', pos, mine ? 1 : 0); debrisBurst(pos.x, (kl.ce || 3) - 0.05, pos.z, 'c', 0.8); if (mine) { R.shake = Math.max(R.shake, 2.4); R.whiteFlash = 0.05; } }
   if (KS.phase !== 2) Game.killCeil = false;
   if (crossed(KILL_DRAG + KILL_TOSS[1])) { Sound.play('bump', pos); Sound.play('crack', pos); if (mine) R.shake = Math.max(R.shake, 1.4); }
   if (crossed(KILL_DRAG + KILL_TOSS[1] + 0.15)) Sound.scream({ x: C.headPos.x, y: C.headPos.y, z: C.headPos.z });
+  // the roar as it snatches them up: heard by everyone; the one it has hears it in their face, and the hit
+  if (crossed(0.05)) Sound.scream({ x: C.headPos.x, y: C.headPos.y, z: C.headPos.z });
+  if (mine && crossed(0.03)) { Sound.play('sting'); R.shake = Math.max(R.shake || 0, 2.2); }
+  if (mine && crossed(JUMP_END)) { Sound.play('thud', { x: C.headPos.x, y: C.headPos.y, z: C.headPos.z }); Sound.play('slam', { x: C.headPos.x, y: C.headPos.y, z: C.headPos.z }); }
 }

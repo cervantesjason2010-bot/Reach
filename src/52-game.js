@@ -43,7 +43,8 @@ function startNewRound() {
   Game.g.lv = Game.levelKey || 'l1';
   if (Game.g.lv === 'l2') seizeNewRound(Game.g);
   if (Game.g.lv === 'l3') { seizeCodes(Game.g); paleNewRound(Game.g); }
-  Game.sim = { state: 'dormant', timer: INTRO_SECONDS + 75, path: null, pathT: 0, goal: null, lastSeen: null, lost: 0, seeT: {}, reachSafe: null, reachT: 0, ext: 0, cool: {}, area: 0,
+  // the first time it shows itself: about a minute in, wherever the team has got to by then
+  Game.sim = { state: 'dormant', timer: 48 + Math.random() * 16, followT: 0, path: null, pathT: 0, goal: null, lastSeen: null, lost: 0, seeT: {}, reachSafe: null, reachT: 0, ext: 0, cool: {}, area: 0,
     holds: {}, insideT: 0, x: 0, z: 0, yaw: 0, speed: 0, wanderT: 0, eatT: 0, victim: null, scream: 0, spawnFor: -1,
     born: false, travelT: 0, probe: null };
 }
@@ -64,7 +65,12 @@ function hostTick(dt) {
   // where is the team?
   let ca = 0;
   for (const p of living) ca = Math.max(ca, Math.max(0, areaAt(L, p.x, p.z)));
-  if (ca > g.ca) { g.ca = ca; hostEvent(g, 'area', { a: ca }); if (sim.state !== 'chase' && sim.state !== 'reach') { sim.spawnFor = ca; sim.timer = 14 + Math.random() * 10; } }
+  if (ca > g.ca) {
+    g.ca = ca; hostEvent(g, 'area', { a: ca });
+    // the team has moved on: before long, it comes after them (and if it has not shown itself yet, it does it here)
+    if (sim.state === 'dormant') { sim.spawnFor = ca; sim.timer = Math.min(sim.timer, 12 + Math.random() * 8); }
+    else if (sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') { sim.spawnFor = ca; sim.followT = 6 + Math.random() * 6; }
+  }
   // checkpoints and respawns
   for (const p of living) {
     const sf = safeAt(L, p.x, p.z);
@@ -77,10 +83,10 @@ function hostTick(dt) {
   // total party kill: back to the last shelter
   if (!living.length && players.length) {
     g.tpk += dt;
-    if (g.tpk > KILL_TOTAL + 0.6) {
+    if (g.tpk > KILL_TOTAL + 2.6) {
       g.tpk = 0; g.k = {};
       hostEvent(g, 'respawn', { s: g.cp, ids: players.map((p) => p.id), all: 1 });
-      relocateCreature(g, g.ca, 18);
+      relocateCreature(g, g.ca, 18, []);
     }
   } else g.tpk = 0;
   processActions(g, players);
@@ -343,19 +349,41 @@ function emergeTick(g, living, dt, open) {
   }
 }
 // It is never replaced with a fresh one further in. There is one of them, and when the team moves on it
-// follows - on foot, through the doors they opened, taking as long as that takes. Only when it has been
-// shut out for a long time, and nobody can see it, does it give up and take the vents instead.
-function relocateCreature(g, area, delay) {
+// follows - on foot when they are near, at a lope that keeps up with anyone walking, through the doors they
+// opened. When they are a long way off, or it has been shut out, it goes into the walls instead and comes out
+// of the vent nearest them: which is why it always seems to be somewhere ahead of you.
+function relocateCreature(g, area, delay, living) {
   const sim = Game.sim, L = Game.L;
   const lair = L.lairs[area] || L.lairs[Math.max(0, area - 1)];
   if (!lair) return;
   sim.pendingLair = lair;
   if (sim.born) {
-    sim.state = 'travel'; sim.goal = { x: lair.x, z: lair.z }; sim.path = null; sim.travelT = 0; sim.spawnFor = -1;
+    const open = openLocksOf(g);
+    let near = 1e9, seen = false;
+    for (const p of living) {
+      const d = dist2(p.x, p.z, sim.x, sim.z);
+      near = Math.min(near, d);
+      if (d < 26 && lineOfSight(L, p.x, p.z, sim.x, sim.z, open)) seen = true;
+    }
+    if (!seen && (!living.length || near > 38)) { creatureIntoWalls(g, living.length ? 3 + Math.random() * 4 : delay, area, living); return; }
+    if (sim.state !== 'travel') sim.travelT = 0;
+    sim.state = 'travel'; sim.goal = { x: lair.x, z: lair.z }; sim.path = null; sim.spawnFor = -1;
     return;
   }
   // the first time only: it has to come from somewhere
   sim.state = 'dormant'; sim.timer = delay; sim.spawnFor = area;
+  g.cr.mode = 'hidden';
+}
+// Gone into the ducts. Out of sight, it comes out again from a vent near the team: the one in their area - or,
+// if that is right across a big hall from them, the next one on, ahead of them.
+function creatureIntoWalls(g, delay, area, living) {
+  const sim = Game.sim, L = Game.L;
+  sim.state = 'dormant'; sim.timer = delay; sim.spawnFor = area; sim.path = null; sim.goal = null; sim.travelT = 0; sim.stuck = 0;
+  let lair = L.lairs[area] || L.lairs[Math.max(0, area - 1)] || sim.pendingLair;
+  const nearest = (q) => { let d = 1e9; for (const p of living || []) d = Math.min(d, dist2(p.x, p.z, q.x, q.z)); return d; };
+  const next = L.lairs[area + 1];
+  if (lair && next && living && living.length && nearest(lair) > 45 && nearest(next) < nearest(lair)) lair = next;
+  sim.pendingLair = lair;
   g.cr.mode = 'hidden';
 }
 
@@ -392,15 +420,13 @@ function creatureTick(g, living, dt, open) {
     return;
   }
   if (sim.state === 'emerge') { emergeTick(g, living, dt, open); return; }
-  // when the team has moved on, it comes through the vents
+  // when the team has moved on, it comes after them
   if (sim.spawnFor >= 0 && sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') {
-    sim.timer -= dt;
-    if (sim.timer <= 0) {
-      // once it exists it just starts walking after them; only a creature that has not appeared yet
-      // needs everyone to be out of sight first
-      const far = sim.born || living.every((p) => dist2(p.x, p.z, sim.x, sim.z) > 22);
+    sim.followT = (sim.followT || 0) - dt;
+    if (sim.followT <= 0) {
       const area = sim.spawnFor; sim.spawnFor = -1;
-      if (far) { relocateCreature(g, area, 1.5); return; }
+      relocateCreature(g, area, 1.5, living);
+      if (sim.state === 'dormant') return;
     }
   }
   // perception
@@ -484,7 +510,15 @@ function creatureTick(g, living, dt, open) {
         goal = s.outside;
         if (dist2(sim.x, sim.z, s.outside.x, s.outside.z) < 0.7) { sim.state = 'reach'; sim.reachSafe = s; sim.reachT = 0; sim.ext = 0; sim.probe = null; }
       } else if (sf) { sim.state = 'investigate'; sim.goal = sim.lastSeen; sim.timer = 6; }
-      else goal = { x: tp.x, z: tp.z };
+      else {
+        // it runs at where they are going to be, not where they are - as far ahead as it takes to get there
+        goal = { x: tp.x, z: tp.z };
+        const tv = sim.tv, lead = clamp(dist2(sim.x, sim.z, tp.x, tp.z) / 5, 0, 0.9);
+        if (tv && Math.hypot(tv.x, tv.z) > 1) {
+          const q = walkPoint(L, tp.x + tv.x * lead, tp.z + tv.z * lead, open);
+          if (q && !safeAt(L, q.x, q.z) && lineWalkable(L, tp.x, tp.z, q.x, q.z, open)) goal = q;
+        }
+      }
       if (!sf && dist2(sim.x, sim.z, tp.x, tp.z) < GRAB_DIST) {
         g.k[tp.id] = Math.max(0.01, r2(g.t)); g.kc = (g.kc || 0) + 1; dropItems(g, tp); hostEvent(g, 'grab', { who: tp.id, x: r2(tp.x), z: r2(tp.z) });
         startKill(g, tp, null, null);
@@ -523,15 +557,15 @@ function creatureTick(g, living, dt, open) {
     }
     if (!sim.goal || sim.wanderT <= 0 || (arrived && sim.pause <= 0)) { sim.goal = pickRoamGoal(g, living, open); sim.wanderT = 30; sim.path = null; sim.arrived = false; }
     if (sim.pause > 0) { sim.pause -= dt; mode = 'idle'; }
-    else { goal = sim.goal; speed = sim.roam === 'hunt' ? 1.9 : sim.roam === 'retreat' ? 1.7 : 1.35; }
+    else { goal = sim.goal; speed = sim.roam === 'hunt' ? 2.7 : sim.roam === 'retreat' ? 1.9 : sim.roam === 'trail' ? 1.7 : 1.4; }
   } else if (sim.state === 'travel') {
-    // walking the length of the station to get to where you went
-    goal = sim.goal; speed = 2.15; mode = 'walk';
+    // coming after them along the station, at a lope that keeps up with anyone walking
+    goal = sim.goal; speed = 3.3; mode = 'walk';
     sim.travelT += dt;
-    if (!goal || dist2(sim.x, sim.z, goal.x, goal.z) < 2.5) { sim.state = 'wander'; sim.goal = null; sim.path = null; }
-    else if (sim.travelT > 55 && living.every((p) => dist2(p.x, p.z, sim.x, sim.z) > 24)) {
-      // locked out: it finds its own way through rather than stay behind
-      sim.state = 'dormant'; sim.timer = 1.5; sim.spawnFor = -1; cr.mode = 'hidden'; return;
+    if (!goal || dist2(sim.x, sim.z, goal.x, goal.z) < 2.5) { sim.state = 'wander'; sim.goal = null; sim.path = null; sim.menace = Math.max(sim.menace, 0.6); }
+    else if (sim.travelT > 22 && living.every((p) => dist2(p.x, p.z, sim.x, sim.z) > 26 || !lineOfSight(L, p.x, p.z, sim.x, sim.z, open))) {
+      // shut out, or just too far: it finds its own way through, in the walls, rather than stay behind
+      creatureIntoWalls(g, 2 + Math.random() * 3, g.ca, living); return;
     }
   } else if (sim.state === 'eat') { mode = 'eat'; }
   else if (sim.state === 'leave') {
@@ -548,6 +582,7 @@ function creatureTick(g, living, dt, open) {
     if (trying && moved < 0.35) {
       sim.path = null; sim.stuck = (sim.stuck || 0) + 1;
       if (sim.stuck >= 2 && (sim.state === 'wander' || sim.state === 'investigate' || sim.state === 'leave')) { sim.state = 'wander'; sim.goal = pickRoamGoal(g, living, open); sim.arrived = false; sim.stuck = 0; }
+      else if (sim.stuck >= 2 && sim.state === 'travel' && living.every((p) => !lineOfSight(L, p.x, p.z, sim.x, sim.z, open))) { creatureIntoWalls(g, 2 + Math.random() * 2, g.ca, living); return; }
     } else sim.stuck = 0;
     sim.stuckT = 0; sim.stuckX = sim.x; sim.stuckZ = sim.z;
   }
@@ -698,7 +733,7 @@ function moveCreatureToward(g, goal, speed, dt, open) {
     sim.blocked = null;
     if (lineWalkable(L, sim.x, sim.z, goal.x, goal.z, open)) sim.path = [{ x: goal.x, z: goal.z }];
     else {
-      sim.path = findPath(L, sim.x, sim.z, goal.x, goal.z, open, 4000);
+      sim.path = findPath(L, sim.x, sim.z, goal.x, goal.z, open, dist2(sim.x, sim.z, goal.x, goal.z) > 24 ? 24000 : 4000);
       if (!sim.path) {
         // somewhere it cannot go - a crawlway, a gap too small for it: as close as it can get instead
         const gx = Math.floor(goal.x), gz = Math.floor(goal.z);
@@ -1059,9 +1094,10 @@ function startKill(g, p, s, hand) {
     else { const fp = findPath(L, lx, lz, ga.x, ga.z, open, 1500); if (fp) for (const w of fp.slice(0, 12)) path.push(w.x, w.z); }
   }
   path.push(ga.x, ga.z);
-  g.kl = { id: p.id, t: r2(g.t), cx: r2(sim.x), cz: r2(sim.z), dx: r2(best.dx), dz: r2(best.dz), h: r2(h), c: r2(c), p: path.map(r2), s: s ? s.id : 0 };
+  g.kl = { id: p.id, t: r2(g.t), cx: r2(sim.x), cz: r2(sim.z), dx: r2(best.dx), dz: r2(best.dz), h: r2(h), ce: r2(c), p: path.map(r2), s: s ? s.id : 0 };
   sim.yaw = Math.atan2(best.dx, best.dz);
-  sim.state = 'eat'; sim.eatT = KILL_SECONDS; sim.victim = { x: sim.x + best.dx * 1.3, z: sim.z + best.dz * 1.3, id: p.id };
+  // and then it stays down over them a while, before it goes
+  sim.state = 'eat'; sim.eatT = KILL_SECONDS + 3.5; sim.victim = { x: sim.x + best.dx * 1.3, z: sim.z + best.dz * 1.3, id: p.id };
 }
 
 function dropItems(g, p) {

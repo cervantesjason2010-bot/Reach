@@ -371,7 +371,8 @@ function breachArea3(rnd) { // Barracks: the dormitory, the mess and the kitchen
   g.set(0, 12, '<');
   g.floor(1, 12, 44, 13);
   // the dormitory: bunks along both walls and back to back down the middle, a footlocker at each
-  g.floor(1, 1, 30, 10); g.put([[8, 11], [22, 11]], '.');
+  // its two doors come in between the bunks, never into the end of one
+  g.floor(1, 1, 30, 10); g.put([[5, 11], [25, 11]], '.');
   for (const x of [3, 7, 11, 15, 19, 23, 27]) { g.set(x, 1, 'g'); g.set(x, 5, 'g'); g.set(x, 6, 'g'); g.set(x, 10, 'g'); g.set(x, 2, 'x'); g.set(x, 9, 'x'); }
   // the mess: long tables and benches
   g.floor(1, 15, 30, 24); g.fill(14, 14, 17, 14, '.');
@@ -568,7 +569,7 @@ Object.assign(SET_PIECES, {
     mb.geo(B, labelMat('MENU · DAY 4,018 · BEANS', { bg: '#1e2420', fg: '#d8d8cc', w: 1024, h: 128, size: 64, font: 'cursive' }), planeGeo(2.0, 0.25), 0, 1.95, 0.045);
     mb.geo(B, artMat('tally', 1), planeGeo(1.8, 0.8), 0, 1.4, 0.045);
     bunkerSign(B, areaFrame(a, 44.98, 12.5, -Math.PI / 2), 'SECTOR 3  ·  ARMOURY', 2.65, 1.4);
-    bunkerSign(B, areaFrame(a, 8.5, 11.02, 0), 'DORMITORY', 2.55, 1.0);
+    bunkerSign(B, areaFrame(a, 5.5, 12.02, 0), 'DORMITORY', 2.55, 1.0);
     bunkerSign(B, areaFrame(a, 15.5, 13.98, Math.PI), 'MESS', 2.55, 0.8);
     // the kitchen: pots on the range, the sacks, the tins
     const kt = areaFrame(a, 38.5, 18.5, 0);

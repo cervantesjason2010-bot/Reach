@@ -497,14 +497,9 @@ function dressDoorways(L, batches) {
       // leaf hinged at (fx,fz); closed it would span the opening, open it lies along the wall into the room
       const base = wallAlongX ? (hingeSide < 0 ? 0 : Math.PI) : (hingeSide < 0 ? -Math.PI / 2 : Math.PI / 2);
       const sgn = wallAlongX ? roomSide * hingeSide : -roomSide * hingeSide;
-      const hf = frame(fx, fz, base + sgn * ang);
-      hf.cbox(B, leafM, 0.45, 1.06, 0.0, 0.88, 2.1, 0.045, 0.006);
-      for (const lx of [0.25, 0.5, 0.75]) { const p = hf.w(lx, 0, 0); addCollider(L, p[0], p[2], 0.09); }
-      hf.cbox(B, PM.chrome, 0.8, 1.0, 0.04, 0.12, 0.02, 0.02, 0.004);
-      hf.cbox(B, PM.chrome, 0.8, 1.0, -0.04, 0.12, 0.02, 0.02, 0.004);
-      if (theme !== 'office') hf.cbox(B, plainMat(0x9a9ea2, { roughness: 0.35, metalness: 0.8 }), 0.45, 0.15, 0.025, 0.84, 0.25, 0.004, 0.002);
-      if (theme === 'lab' || theme === 'contain') { hf.box(B, PM.black, 0.45, 1.55, 0, 0.22, 0.5, 0.05); hf.box(B, PM.glass, 0.45, 1.55, 0, 0.2, 0.46, 0.052); }
-      if (rnd() < 0.4) hf.cbox(B, PM.chrome, 0.06, 2.0, 0.12, 0.3, 0.03, 0.04, 0.006);
+      const bar = rnd() < 0.4;
+      // a plastic curtain has no door; and the leaf itself goes in last, once everything else is standing
+      if (L.ch[gz * L.W + gx] !== ';') (L.leafPlans || (L.leafPlans = [])).push({ B, gx, gz, theme, leafM, bar, hf: frame(fx, fz, base + sgn * ang) });
     }
     // exit sign over some doorways, and a room plate beside office and lab doors
     if (rnd() < 0.3 && top + 0.35 < L.ceil[gz * L.W + gx]) {
@@ -736,6 +731,56 @@ function dressWorld(L, batches, holes) {
     else dressLair(L, batches[ai], lair, ai, dressRnd(ai, 5));
   });
   L.areas.forEach((a, ai) => { const fn = SET_PIECES[a.theme]; if (fn) fn(L, batches[ai], a, ai, dressRnd(ai * 3, 41)); });
+  placeDoorLeaves(L);
+}
+
+// The open door leaves go in after everything else that stands on a floor, and only where they shut nobody
+// out: in a passage only a cell wide, a leaf swung back against the wall can lie right across a side door - a
+// shelter's, once - so each one is tried first, and left off wherever it would cut a piece of floor off.
+function placeDoorLeaves(L) {
+  for (const P of L.leafPlans || []) {
+    const { B, hf, leafM, theme } = P, pts = [0.25, 0.5, 0.75].map((lx) => hf.w(lx, 0, 0));
+    if ((L.noLeaf && L.noLeaf.has(P.gz * L.W + P.gx)) || leafCutsOff(L, P.gx, P.gz, pts, 0.09)) continue;
+    hf.cbox(B, leafM, 0.45, 1.06, 0.0, 0.88, 2.1, 0.045, 0.006);
+    for (const p of pts) addCollider(L, p[0], p[2], 0.09);
+    hf.cbox(B, PM.chrome, 0.8, 1.0, 0.04, 0.12, 0.02, 0.02, 0.004);
+    hf.cbox(B, PM.chrome, 0.8, 1.0, -0.04, 0.12, 0.02, 0.02, 0.004);
+    if (theme !== 'office') hf.cbox(B, plainMat(0x9a9ea2, { roughness: 0.35, metalness: 0.8 }), 0.45, 0.15, 0.025, 0.84, 0.25, 0.004, 0.002);
+    if (theme === 'lab' || theme === 'contain') { hf.box(B, PM.black, 0.45, 1.55, 0, 0.22, 0.5, 0.05); hf.box(B, PM.glass, 0.45, 1.55, 0, 0.2, 0.46, 0.052); }
+    if (P.bar) hf.cbox(B, PM.chrome, 0.06, 2.0, 0.12, 0.3, 0.03, 0.04, 0.006);
+  }
+  L.leafPlans = null;
+}
+// Would posts of radius r at pts cut off any floor near the door at (gx,gz)? Where someone can stand around it is
+// flooded out from the doorway on a fine grid, with and without them: any cell lost is a cell shut off.
+function leafCutsOff(L, gx, gz, pts, r) {
+  const R = 3, S = 6, N = (2 * R + 1) * S, x0 = gx - R, z0 = gz - R, open = L.locks.map(() => 1);
+  const flood = (extra) => {
+    const seen = new Uint8Array(N * N), cells = new Set();
+    const free = (ix, iz) => {
+      const x = x0 + (ix + 0.5) / S, z = z0 + (iz + 0.5) / S;
+      if (collides(L, x, z, PLAYER_R, false, open)) return false;
+      if (extra) for (const p of extra) { const dx = x - p[0], dz = z - p[2], rr = PLAYER_R + r; if (dx * dx + dz * dz < rr * rr) return false; }
+      return true;
+    };
+    const s0 = R * S + (S >> 1);
+    if (!free(s0, s0)) return cells;
+    const q = [s0 * N + s0]; seen[s0 * N + s0] = 1;
+    for (let i = 0; i < q.length; i++) {
+      const k = q[i], ix = k % N, iz = (k / N) | 0;
+      cells.add(((iz / S) | 0) * 64 + ((ix / S) | 0));
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = ix + dx, nz = iz + dz, nk = nz * N + nx;
+        if (nx < 0 || nz < 0 || nx >= N || nz >= N || seen[nk]) continue;
+        seen[nk] = 1;
+        if (free(nx, nz)) q.push(nk);
+      }
+    }
+    return cells;
+  };
+  const after = flood(pts);
+  for (const c of flood(null)) if (!after.has(c)) return true;
+  return false;
 }
 
 // ---------- set pieces: hand-placed scenes per area (coordinates are local to the area) ----------
@@ -908,13 +953,28 @@ const SET_PIECES = {
     hk.torus(B, mat('steel'), 0, 3.6, 0.05, 0.12, 0.03, Math.PI / 2);
   },
   contain(L, B, a, ai, r) {
-    // cell four: bars bent outward, the observation feed, chains from the cell ceilings
-    const b = areaFrame(a, 21, 10.5, 0);
+    // Cell four: its bars wrenched apart. Torn out of the floor and bent back either side as far as the jambs,
+    // bowed out into the corridor, with the middle one ripped clean out and thrown down. Something three metres
+    // tall came out through there - and a person can still get in.
+    const b = areaFrame(a, 21.5, 10.5, 0), steel = mat('steel'), rust = mat('rust');
+    (L.noLeaf || (L.noLeaf = new Set())).add((a.offZ + 10) * L.W + a.offX + 21);
     for (let k = 0; k < 7; k++) {
-      const x = -0.36 + k * 0.12, bend = 1 - Math.abs(x) * 2.2;
-      b.cyl(B, mat('steel'), x * (1 + bend * 0.8), 1.2, 0.35 * bend, 0.026, 0.026, 2.3, 10, -0.35 * bend, x * bend * 0.6);
-      for (const yy of [-0.9, -0.3, 0.3]) { const th = -0.35 * bend, bp = b.w(x * (1 + bend * 0.8), 0, 0.35 * bend + yy * Math.sin(th)); addCollider(L, bp[0], bp[2], 0.05); }
+      if (k === 3) continue;
+      const o = (k - 3) * 0.13, sx = Math.sign(o), to = sx * (0.475 - (0.39 - Math.abs(o)) * 0.077), bow = 0.08 + 0.3 * (0.39 - Math.abs(o)) / 0.26;
+      const pts = [];
+      for (let j = 0; j <= 12; j++) {
+        const y = 0.16 + (2.3 - 0.16) * j / 12, w = 1 - smoothstep(1.78, 2.3, y);
+        pts.push(b.w(lerp(o, to, w) + Math.sin(y * 4.1 + k) * 0.012 * w, y, bow * w * (0.55 + 0.45 * Math.sin(Math.min(y / 1.78, 1) * Math.PI * 0.9))));
+      }
+      B.add(k % 3 ? steel : rust, tubeGeo(pts, 0.026, 28, 8), _m4.identity());
+      for (const p of pts) if (p[1] < 1.9) addCollider(L, p[0], p[2], 0.035);
+      // the stub it was torn from, still in the bottom rail
+      b.cyl(B, steel, o, 0.09, 0, 0.026, 0.03, 0.14, 8, 0.25 * sx, 0.3);
     }
+    for (const s of [-1, 1]) b.cbox(B, mat('steelDark'), s * 0.4, 0.06, 0, 0.2, 0.12, 0.16, 0.015, 0, 1, 0, s * 0.25);
+    // the middle bar, out in the corridor where it was thrown, bent nearly double
+    B.add(rust, tubeGeo([b.w(-0.6, 0.03, 1.3), b.w(-0.1, 0.035, 1.05), b.w(0.35, 0.04, 1.2), b.w(0.55, 0.05, 1.7), b.w(0.4, 0.04, 2.25)], 0.026, 24, 8), _m4.identity());
+    b.geo(B, decalMat('scratch'), cachedGeo('cell4Gouge', () => new THREE.PlaneGeometry(0.9, 1.6).rotateX(-Math.PI / 2)), 0.1, 0.006, 1.2, 0.4);
     for (let cell = 0; cell < 6; cell++) for (const z of [5.5, 17.5]) {
       const f = areaFrame(a, 3 + cell * 6, z, 0);
       for (let k = 0; k < 10; k++) f.torus(B, mat('rust'), 0, 3.0 - k * 0.1, 0, 0.04, 0.01, k % 2 ? Math.PI / 2 : 0);

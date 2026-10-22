@@ -189,7 +189,7 @@ function buildArea4(rnd) { // Cold Storage
   // freezers north of the top hall, entered through plastic curtains
   for (const [a, b] of [[3, 9], [11, 17], [19, 25], [27, 33]]) {
     g.floor(a, 1, b, 3); g.set(Math.floor((a + b) / 2), 4, ';');
-    g.hline(a, b, 1, 'x'); g.set(a + 1, 3, 'o'); g.set(Math.floor((a + b) / 2), 2, 'L');
+    g.hline(a, b, 1, 'x'); g.set(a, 2, 'o'); g.set(Math.floor((a + b) / 2), 2, 'L');
   }
   g.hline(1, 38, 4, '#'); for (const x of [6, 14, 22, 30]) g.set(x, 4, ';');
   // morgue in the middle
@@ -296,7 +296,8 @@ function buildArea8(rnd) { // Containment
   cells.forEach(([a, b], i) => {
     g.floor(a, 2, b, 9); g.floor(a, 14, b, 21);
     g.hline(a, b, 10, '|'); g.hline(a, b, 13, '|');
-    g.set(a + 2, 10, i % 2 ? '|' : '.'); g.set(a + 2, 13, i % 3 === 1 ? '.' : '|');
+    // every cell stands open: its barred door left wide when they ran
+    g.set(a + 2, 10, '.'); g.set(a + 2, 13, '.');
     g.set(a + 1, 3, 'b'); g.set(a + 1, 20, 'b'); g.set(b - 1, 6, '%'); g.set(b - 1, 17, '%');
     if (b + 1 < 37) { g.vline(b + 1, 1, 9, '#'); g.vline(b + 1, 14, 22, '#'); }
   });

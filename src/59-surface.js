@@ -93,6 +93,51 @@ function colossusPose(curl, thumb, wrist) {
   Colossus.root.updateMatrixWorld(true);
 }
 
+// ---------- the storm, and what stands in it ----------
+// Lightning inside the cloud, and the shape of the thing the hand belongs to: never seen except as a shadow
+// against the lightning behind it - the head and the shoulders of something standing over the city, two
+// points of light where its eyes would be. Shared by the sky and the cloud deck, so the shadow falls across both.
+const GIANT_GLSL = `
+  uniform float flash, giant, eyes;
+  uniform vec3 flashDir, giantDir;
+  float gH(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+  float gN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(gH(i), gH(i + vec2(1.0, 0.0)), f.x), mix(gH(i + vec2(0.0, 1.0)), gH(i + vec2(1.0, 1.0)), f.x), f.y); }
+  float gEll(vec2 p, vec2 c, vec2 r) { return length((p - c) / r) - 1.0; }
+  float gCap(vec2 p, vec2 a, vec2 b, float r) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return (length(pa - ba * h) - r) / r; }
+  vec3 stormLight(vec3 d, vec3 c, float cl) {
+    float fl = max(dot(d, flashDir), 0.0);
+    c += vec3(0.72, 0.78, 1.0) * flash * (pow(fl, 14.0) * (0.5 + 1.4 * cl) + pow(fl, 3.0) * 0.2 + 0.05);
+    if (giant > 0.001) {
+      vec3 gz = normalize(giantDir), gx = normalize(cross(vec3(0.0, 1.0, 0.0), gz)), gy = cross(gz, gx);
+      float fw = dot(d, gz);
+      if (fw > 0.2) {
+        vec2 uv = vec2(dot(d, gx), dot(d, gy)) / fw;
+        // the edge of it is never clean: torn by the cloud in front of it
+        vec2 w = uv + (vec2(gN(uv * 18.0), gN(uv * 18.0 + 7.3)) - 0.5) * 0.035;
+        // a long skull, hung forward; a jaw; a neck like a cable; shoulders hunched up round it; arms hanging
+        float body = gEll(w, vec2(0.0, 0.26), vec2(0.085, 0.15));
+        body = min(body, gEll(w, vec2(0.012, 0.15), vec2(0.06, 0.08)));
+        body = min(body, gCap(w, vec2(0.0, 0.16), vec2(0.0, 0.02), 0.04));
+        body = min(body, gEll(w, vec2(-0.2, 0.02), vec2(0.24, 0.11)));
+        body = min(body, gEll(w, vec2(0.21, 0.04), vec2(0.23, 0.12)));
+        body = min(body, gEll(w, vec2(0.0, -0.1), vec2(0.36, 0.16)));
+        body = min(body, gCap(w, vec2(-0.4, -0.02), vec2(-0.5, -0.7), 0.055));
+        body = min(body, gCap(w, vec2(0.41, 0.0), vec2(0.3, -0.75), 0.06));
+        for (int k = 0; k < 4; k++) { float fk = float(k); body = min(body, gCap(w, vec2(-0.16 + fk * 0.1, 0.1 + 0.02 * fk), vec2(-0.2 + fk * 0.12, 0.2 + 0.04 * mod(fk, 2.0)), 0.012)); }
+        float inside = (1.0 - smoothstep(-0.15, 0.15, body)) * (0.55 + 0.45 * cl) * smoothstep(-0.75, -0.2, uv.y);
+        float lit = clamp(0.12 + 1.9 * flash, 0.0, 1.0);
+        c = mix(c, vec3(0.01, 0.008, 0.008), inside * giant * lit);
+        c += vec3(0.7, 0.75, 0.92) * (1.0 - smoothstep(0.0, 0.18, abs(body))) * smoothstep(0.35, 0.9, flash) * giant * 0.35 * cl;
+        // its eyes: two slits of dull light, and nothing else in the face
+        vec2 e1 = (w - vec2(-0.032, 0.235)) * vec2(1.0, 3.0), e2 = (w - vec2(0.032, 0.235)) * vec2(1.0, 3.0);
+        float ey = exp(-dot(e1, e1) / 0.00012) + exp(-dot(e2, e2) / 0.00012);
+        c += vec3(1.0, 0.85, 0.55) * ey * eyes * giant * 3.0;
+      }
+    }
+    return c;
+  }`;
+const STORM_UNIFORMS = () => ({ flash: { value: 0 }, flashDir: { value: new THREE.Vector3(0, 1, 0) }, giant: { value: 0 }, giantDir: { value: new THREE.Vector3(0.5, 0.3, -0.85) }, eyes: { value: 0 } });
+
 // ---------- the city ----------
 function surfTex(kind, seed) {
   return canvasTex(256, 256, (g, w, h) => {
@@ -116,6 +161,18 @@ function surfTex(kind, seed) {
     } else if (kind === 'smoke') {
       g.clearRect(0, 0, w, h);
       for (let i = 0; i < 70; i++) { const y = r() * h, x = w / 2 + (r() - 0.5) * w * 0.4 * (1 - y / h * 0.6), rad = 18 + (1 - y / h) * 50 * r(); const gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, 'rgba(40,38,36,' + (0.14 + 0.12 * (y / h)) + ')'); gr.addColorStop(1, 'rgba(40,38,36,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+    } else if (kind === 'puff') {
+      // a round, soft billow of cloud or dust: lumpy inside, fading to nothing at its edge
+      g.clearRect(0, 0, w, h);
+      for (let i = 0; i < 90; i++) {
+        const a = r() * 6.28, rr = r() * w * 0.28, x = w / 2 + Math.cos(a) * rr, y = h / 2 + Math.sin(a) * rr * 0.8, rad = 14 + r() * 34, v = 70 + r() * 50 | 0;
+        const gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, 'rgba(' + v + ',' + (v - 5) + ',' + (v - 9) + ',0.42)'); gr.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)');
+        g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      }
+      g.globalCompositeOperation = 'destination-in';
+      const m = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(0.6, 'rgba(0,0,0,0.85)'); m.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = m; g.fillRect(0, 0, w, h);
+      g.globalCompositeOperation = 'source-over';
     } else if (kind === 'cloud') {
       g.clearRect(0, 0, w, h);
       for (let i = 0; i < 260; i++) { const x = r() * w, y = r() * h, rad = 10 + r() * 40; const gr = g.createRadialGradient(x, y, 0, x, y, rad); const v = 70 + r() * 30 | 0; gr.addColorStop(0, 'rgba(' + v + ',' + (v - 4) + ',' + (v - 8) + ',0.35)'); gr.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
@@ -129,7 +186,7 @@ function buildSurfaceSet() {
   const conc = M(0x6a6660), concD = M(0x4a4844), rust = M(0x5a3a24, { roughness: 0.8, metalness: 0.3 }), soot = M(0x1e1c1a);
   // the ground: ash over everything, out to the horizon
   const gt = surfTex('ground', 1); gt.wrapS = gt.wrapT = THREE.RepeatWrapping; gt.repeat.set(320, 320);
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(2600, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: gt, roughness: 1, color: 0xa8a49c }));
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(2600, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: gt, roughness: 1, color: 0x8a847c }));
   ground.position.set(O.x, -0.02, O.z); ground.receiveShadow = true; grp.add(ground);
   // the compound round the hatch: a cracked pad, the housing, sandbags, a fence that fell, a tower that fell, a truck
   B.add(conc, boxGeo(44, 0.3, 44, 6), xform(O.x, -0.15, O.z));
@@ -179,34 +236,115 @@ function buildSurfaceSet() {
     if (r() < 0.5) B.add(M(0x3e3c38), cachedGeo('rubble', () => new THREE.ConeGeometry(1, 0.5, 7)), xform(x + w * 0.6, 3, z, r() * 6, 0, 0, w * 0.7, 10, d * 0.7));
   }
   B.build(grp, {});
-  // the sky: a low ceiling of grey-brown cloud, a sun like a coin behind it
+  // the sky: a ceiling of storm cloud, black overhead, brown with smoke lower down, and under it all the horizon
+  // burning - the glow of a city on fire, strongest where the city is
+  const storm = STORM_UNIFORMS();
   const skyM = new THREE.ShaderMaterial({
-    uniforms: { sun: { value: new THREE.Vector3(-0.35, 0.18, -0.92).normalize() }, dim: { value: 1 } },
+    uniforms: Object.assign({ sun: { value: new THREE.Vector3(-0.35, 0.18, -0.92).normalize() }, dim: { value: 1 }, time: { value: 0 } }, storm),
     vertexShader: 'varying vec3 vD; void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform vec3 sun; uniform float dim; varying vec3 vD;
+    fragmentShader: `uniform vec3 sun; uniform float dim, time; varying vec3 vD;
       float h(vec3 p) { p = fract(p * 0.3183 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
       float n(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y), mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * n(p); p = p * 2.03 + vec3(1.7, 9.2, 3.1); a *= 0.5; } return s; }
+      ${GIANT_GLSL}
       void main() {
-        float y = vD.y;
-        vec3 hor = vec3(0.46, 0.4, 0.33), top = vec3(0.17, 0.16, 0.16);
-        vec3 c = mix(hor, top, smoothstep(-0.02, 0.45, y));
-        float cl = n(vD * 6.0) * 0.6 + n(vD * 15.0) * 0.4;
-        c *= 0.82 + 0.3 * cl;
-        float s = max(dot(vD, sun), 0.0);
-        c += vec3(0.55, 0.42, 0.28) * pow(s, 60.0) * 0.6 + vec3(0.3, 0.22, 0.14) * pow(s, 6.0) * 0.35;
-        c = mix(c, vec3(0.32, 0.3, 0.27), smoothstep(0.02, -0.08, y));
+        vec3 d = normalize(vD); float y = d.y;
+        vec3 q = d * 3.2 + vec3(time * 0.012, 0.0, time * 0.007);
+        float cl = fbm(q + vec3(fbm(q * 1.6 + time * 0.01)) * 0.9);
+        float city = smoothstep(-0.1, -0.85, d.z);
+        vec3 c = mix(vec3(0.58, 0.31, 0.16), vec3(0.22, 0.17, 0.14), smoothstep(0.0, 0.14, y));
+        c = mix(c, vec3(0.055, 0.055, 0.065), smoothstep(0.1, 0.5, y));
+        c *= 0.62 + 0.62 * cl;
+        float billow = smoothstep(0.42, 0.78, cl);
+        c += vec3(0.32, 0.12, 0.04) * billow * (1.0 - smoothstep(0.02, 0.35, y)) * (0.35 + 0.65 * city);
+        c += vec3(0.55, 0.2, 0.06) * (1.0 - smoothstep(0.0, 0.07, abs(y))) * (0.3 + 0.7 * city) * (0.7 + 0.5 * n(d * 30.0 + time * 0.4));
+        float s = max(dot(d, sun), 0.0);
+        c += vec3(0.5, 0.34, 0.2) * pow(s, 90.0) * 0.45 * (1.0 - billow * 0.8);
+        c = stormLight(d, c, cl);
+        c = mix(c, vec3(0.3, 0.22, 0.16), smoothstep(0.02, -0.08, y));
         gl_FragColor = vec4(c * dim, 1.0);
       }`,
     side: THREE.BackSide, depthWrite: false, fog: false,
   });
   const sky = new THREE.Mesh(new THREE.SphereGeometry(2800, 32, 16), skyM); sky.position.set(O.x, 0, O.z); sky.renderOrder = -1; sky.frustumCulled = false; grp.add(sky);
-  // the cloud deck the hand comes down through
-  const ct = surfTex('cloud', 3); ct.wrapS = ct.wrapT = THREE.RepeatWrapping; ct.repeat.set(6, 6);
-  const cloudM = new THREE.MeshBasicMaterial({ map: ct, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, color: 0x9a948a });
+  // the cloud deck the hand comes down through: lit from under by the fires, from inside by the lightning, with
+  // a hole torn in it where the arm comes through
+  const cloudM = new THREE.ShaderMaterial({
+    uniforms: Object.assign({ time: { value: 0 }, opacity: { value: 0.96 }, dim: { value: 1 }, hole: { value: new THREE.Vector3(0, 0, 0) } }, storm),
+    vertexShader: 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: `uniform float time, opacity, dim; uniform vec3 hole; varying vec3 vW;
+      float cH(vec2 p) { p = fract(p * vec2(234.34, 435.345)); p += dot(p, p + 34.23); return fract(p.x * p.y); }
+      float cN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(cH(i), cH(i + vec2(1.0, 0.0)), f.x), mix(cH(i + vec2(0.0, 1.0)), cH(i + vec2(1.0, 1.0)), f.x), f.y); }
+      float cF(vec2 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 6; i++) { s += a * cN(p); p = p * 2.07 + vec2(3.1, 1.7); a *= 0.5; } return s; }
+      ${GIANT_GLSL}
+      void main() {
+        vec2 p = vW.xz * 0.0045 + vec2(time * 0.008, time * 0.003);
+        float cl = cF(p + vec2(cF(p * 1.6 + 2.3), cF(p * 1.6 - 1.7)) * 1.3);
+        vec3 d = normalize(vW - cameraPosition);
+        float far = clamp(length(vW.xz - cameraPosition.xz) / 1000.0, 0.0, 1.0), city = smoothstep(-0.1, -0.8, d.z);
+        // the belly of a storm: near black where it is thick, brown where it thins, and the fires of the city
+        // glowing on the underside of it out toward the horizon
+        vec3 c = mix(vec3(0.07, 0.065, 0.07), vec3(0.3, 0.26, 0.23), smoothstep(0.25, 0.75, cl));
+        c += vec3(0.5, 0.18, 0.05) * pow(far, 1.4) * (0.35 + 0.65 * city) * (0.5 + 0.8 * cl);
+        c = stormLight(d, c, cl);
+        float a = opacity;
+        if (hole.z > 0.0) { float r = length(vW.xz - hole.xy); a *= smoothstep(hole.z * 0.5, hole.z * 1.3, r + (cl - 0.5) * hole.z * 0.8); c *= 1.0 - 0.5 * (1.0 - smoothstep(hole.z, hole.z * 2.6, r)); }
+        gl_FragColor = vec4(c * dim, a);
+      }`,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+  });
   const cloud = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(Math.PI / 2), cloudM); cloud.position.set(O.x, 150, O.z); grp.add(cloud);
   // smoke going straight up out of the city, a long way off
   const st = surfTex('smoke', 5);
-  for (let k = 0; k < 7; k++) { const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthWrite: false, color: 0x6a6460 })); const a = -Math.PI / 2 + (r() - 0.5) * 2, rad = 400 + r() * 500; sm.position.set(O.x + Math.cos(a) * rad, 130, O.z + Math.sin(a) * rad); sm.scale.set(90, 280, 1); grp.add(sm); }
+  const glowT = canvasTex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,220,160,1)'); gr.addColorStop(0.25, 'rgba(255,140,50,0.7)'); gr.addColorStop(1, 'rgba(255,80,10,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+  const fires = [];
+  for (let k = 0; k < 9; k++) {
+    const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthWrite: false, color: 0x5a5450 })); const a = -Math.PI / 2 + (r() - 0.5) * 2, rad = 380 + r() * 520;
+    sm.position.set(O.x + Math.cos(a) * rad, 130, O.z + Math.sin(a) * rad); sm.scale.set(90, 280, 1); grp.add(sm);
+    // the fire under it, lighting the column of smoke from below
+    const fg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xff7a2a, fog: false }));
+    fg.position.set(sm.position.x, 22, sm.position.z); fg.scale.set(110, 70, 1); grp.add(fg); fires.push({ s: fg, base: 1, ph: r() * 6, sc: [110, 70] });
+  }
+  // a city burning: fires at the foot of towers, tall and ragged, and windows burning high up; all of it
+  // flickering, and the glow of it on the smoke
+  const flameT = canvasTex(64, 128, (g, w, h) => {
+    const gr = g.createRadialGradient(32, 104, 2, 32, 92, 70); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.18, 'rgba(255,170,60,0.95)'); gr.addColorStop(0.5, 'rgba(230,80,20,0.55)'); gr.addColorStop(1, 'rgba(120,20,0,0)');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(32, 2); g.bezierCurveTo(52, 50, 64, 80, 60, 104); g.quadraticCurveTo(32, 132, 4, 104); g.bezierCurveTo(0, 80, 12, 50, 32, 2); g.fill();
+  });
+  for (let k = 0; k < 74; k++) {
+    const a = -Math.PI / 2 + (r() - 0.5) * 2.3, rad = 160 + r() * 700, big = k < 30;
+    const sz = big ? 16 + r() * 34 : 5 + r() * 10;
+    const fg = new THREE.Sprite(new THREE.SpriteMaterial({ map: big ? flameT : glowT, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: big ? 0xff8a3a : 0xffa040, fog: false }));
+    const sy = big ? sz * 2.1 : sz;
+    fg.position.set(O.x + Math.cos(a) * rad, big ? sy * 0.48 : 12 + r() * 90, O.z + Math.sin(a) * rad); fg.scale.set(sz, sy, 1);
+    grp.add(fg); fires.push({ s: fg, base: big ? 0.95 : 0.6 + r() * 0.4, ph: r() * 6, sc: [sz, sy] });
+    // and the glow it throws round itself
+    if (big) { const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: 0xc84a12, fog: false, opacity: 0.6 })); gl.position.set(fg.position.x, sz * 0.4, fg.position.z); gl.scale.set(sz * 3.2, sz * 1.6, 1); grp.add(gl); fires.push({ s: gl, base: 0.5, ph: r() * 6, sc: [sz * 3.2, sz * 1.6] }); }
+  }
+  // the rest of its arm, from the hand up into the cloud: grey as ash, cracked like a riverbed
+  const armT = canvasTex(256, 512, (g, w, h) => {
+    const rr = mulberry32(77); g.fillStyle = '#4c4946'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { const v = 50 + rr() * 50; g.fillStyle = 'rgba(' + v + ',' + (v - 3) + ',' + (v - 6) + ',' + (0.25 + rr() * 0.4) + ')'; g.fillRect(rr() * w, rr() * h, 2 + rr() * 8, 2 + rr() * 8); }
+    g.strokeStyle = 'rgba(8,7,7,0.9)';
+    for (let i = 0; i < 90; i++) { g.lineWidth = 1 + rr() * 3; g.beginPath(); let x = rr() * w, y = rr() * h; g.moveTo(x, y); for (let j = 0; j < 7; j++) { x += (rr() - 0.5) * 50; y += (rr() - 0.3) * 50; g.lineTo(x, y); } g.stroke(); }
+  });
+  armT.wrapS = armT.wrapT = THREE.RepeatWrapping; armT.repeat.set(2, 9);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1, 1, 24, 1, true), new THREE.MeshStandardMaterial({ map: armT, color: 0x8a8580, roughness: 0.95, side: THREE.DoubleSide }));
+  arm.visible = false; arm.frustumCulled = false; grp.add(arm);
+  // where it comes down through the cloud: the cloud turning round the hole, dragged down after it
+  const ctv = surfTex('puff', 9), vortex = new THREE.Group();
+  for (let k = 0; k < 14; k++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ctv, transparent: true, depthWrite: false, color: 0x6e6862, opacity: 0.85 }));
+    sp.userData = { a: k / 14 * Math.PI * 2, r: 0.75 + (k % 3) * 0.2, y: -(k % 4) * 0.12, s: 0.9 + (k % 5) * 0.15 };
+    vortex.add(sp);
+  }
+  vortex.visible = false; grp.add(vortex);
+  // the wind of it coming down: a ring of dust running out across the ground
+  const shockT = canvasTex(128, 128, (g, w, h) => { const gr = g.createRadialGradient(64, 64, 30, 64, 64, 64); gr.addColorStop(0, 'rgba(120,112,100,0)'); gr.addColorStop(0.7, 'rgba(120,112,100,0.55)'); gr.addColorStop(1, 'rgba(120,112,100,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+  const shock = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: shockT, transparent: true, depthWrite: false, opacity: 0 }));
+  shock.visible = false; grp.add(shock);
+  const dustT = surfTex('puff', 11), dust = [];
+  for (let k = 0; k < 18; k++) { const d = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustT, transparent: true, depthWrite: false, color: 0x8a8278, opacity: 0 })); d.visible = false; grp.add(d); dust.push({ s: d, a: k / 18 * Math.PI * 2 + r() * 0.3, v: 9 + r() * 7 }); }
   // far off in the haze: its legs. That is all.
   const legM = new THREE.MeshStandardMaterial({ color: 0x1c1a18, roughness: 1 });
   const legs = new THREE.Group(); legs.position.set(O.x + 520, 0, O.z - 900);
@@ -233,7 +371,7 @@ function buildSurfaceSet() {
   grp.visible = false;
   R.scene.add(grp);
   const fd = new THREE.DataTexture(new Uint8Array([0, 20, 160, 255]), 1, 1, THREE.RGBAFormat); fd.needsUpdate = true;
-  Object.assign(SURF, { group: grp, sky, skyM, cloud, cloudM, legs, ash, blood, deck, field: fd, fieldXf: new THREE.Vector4(0, 0, 1, 1) });
+  Object.assign(SURF, { group: grp, sky, skyM, cloud, cloudM, legs, ash, blood, deck, field: fd, fieldXf: new THREE.Vector4(0, 0, 1, 1), storm, fires, arm, vortex, shock, dust, flash: 0, flashes: [] });
   return SURF;
 }
 // the platform's deck as a thing that moves: a grate floor, hazard edges, the rails
@@ -284,6 +422,16 @@ function startBreachEnding() {
     [T.white, () => { R.whiteFlash = 1; }],
     [T.surface, () => brToSurface()],
     [T.radio, () => { Sound.play('radio'); subtitle('...any station... this is... is anybody...', 3200); }],
+    [T.look + 1.1, () => brLightning(brSky(-0.6, 0.35, -1), 0.7, 2.4)],
+    [T.boom + 0.7, () => { brLightning(brGiantDir(), 0.85, 1.6); SURF.giantShow = 0.45; }],
+    [T.shadow - 0.15, () => brLightning(brSky(0.1, 1, 0.2), 1, 0.3)],
+    [T.hand + 0.9, () => brLightning(brSky(-0.3, 0.9, 0.4), 0.6, 0.9)],
+    [T.grab - 0.05, () => brLightning(brSky(0.2, 1, -0.1), 1.1, 0.25)],
+    [T.gone - 0.4, () => { brLightning(brGiantDir(), 1.0, 0.8); SURF.giantShow = 1; }],
+    [T.call - 0.1, () => { SURF.eyesOn = true; }],
+    [T.call + 0.5, () => brLightning(brGiantDir(), 1.2, 0.6)],
+    [T.call + 1.7, () => brLightning(brGiantDir(), 0.8, 0.9)],
+    [T.call + 2.7, () => brLightning(brGiantDir(), 1.15, 0.5)],
     [T.boom, () => { Sound.play('colossus', brSurf(0, 0, -600)); R.shake = Math.max(R.shake, 0.7); }],
     [T.boom + 2.4, () => Sound.play('colossus', brSurf(300, 0, -800))],
     [T.shriek, () => { Sound.play('paleShriek', brSurf(Cinema.brPS.x, 2.6, Cinema.brPS.z)); R.fearKick = 1; }],
@@ -303,10 +451,49 @@ function startBreachEnding() {
 }
 // the deck's height in the shaft
 function brRise(T) { return BR_RISE * smoothstep(BR_T.rise, BR_T.white + 0.6, T); }
+// The one whose hand it is stands right over the hatch, up in the cloud - head, and the shoulder its arm comes
+// down from, relative to the hatch. (The legs out in the haze are another one.)
+const BR_GIANT = { head: [-70, 440, -280], shoulder: [-10, 330, -200] };
+const _brG = new THREE.Vector3(), _brG2 = new THREE.Vector3(), _brA = new THREE.Vector3(), _brB = new THREE.Vector3(), _brQ = new THREE.Quaternion(), _brQ2 = new THREE.Quaternion();
+function brSky(x, y, z) { return _brG.set(x, y, z).normalize(); }
+function brGiantDir() { return _brG.set(SURF.ox + BR_GIANT.head[0], BR_GIANT.head[1], SURF.oz + BR_GIANT.head[2]).sub(R.camera.position).normalize(); }
+function brShoulder(out) { return out.set(SURF.ox + BR_GIANT.shoulder[0], BR_GIANT.shoulder[1], SURF.oz + BR_GIANT.shoulder[2]); }
+// a strike: two or three flickers and an afterglow, lighting the cloud from inside; the thunder after it
+function brLightning(dir, power, thunder) {
+  SURF.storm.flashDir.value.copy(dir);
+  SURF.flashes.push({ t0: Cinema.t, p: power });
+  (SURF.thunders || (SURF.thunders = [])).push({ at: Cinema.t + thunder, p: power, dir: dir.clone() });
+}
+function brStorm(dt, t, T, dk) {
+  let f = 0;
+  for (const L of SURF.flashes) {
+    const a = T - L.t0; if (a < 0 || a > 1.4) continue;
+    f = Math.max(f, L.p * (Math.exp(-a * 10) + (a > 0.09 ? 0.8 * Math.exp(-(a - 0.09) * 12) : 0) + (a > 0.24 ? 0.55 * Math.exp(-(a - 0.24) * 6) : 0)));
+  }
+  SURF.flashes = SURF.flashes.filter((L) => T - L.t0 < 1.4);
+  SURF.flash = f; SURF.storm.flash.value = Math.min(1.7, f);
+  for (const th of SURF.thunders || []) if (!th.done && T >= th.at) {
+    th.done = true;
+    Sound.play('thunder', { x: R.camera.position.x + th.dir.x * 300, y: R.camera.position.y + th.dir.y * 300, z: R.camera.position.z + th.dir.z * 300 });
+    R.shake = Math.max(R.shake || 0, 0.25 + th.p * 0.45);
+  }
+  // the light of it, down here
+  R.hemi.intensity += f * 1.4; R.key.intensity += f * 1.8e6; R.whiteFlash = Math.max(R.whiteFlash, f * 0.06);
+  // what stands over the city, and its eyes
+  SURF.storm.giant.value = damp(SURF.storm.giant.value, SURF.giantShow || 0, 2.5, dt);
+  SURF.storm.eyes.value = damp(SURF.storm.eyes.value, SURF.eyesOn ? 1 : 0, 1.4, dt);
+  SURF.storm.giantDir.value.copy(brGiantDir());
+  SURF.skyM.uniforms.time.value = t; SURF.cloudM.uniforms.time.value = t; SURF.cloudM.uniforms.dim.value = lerp(1, 0.6, dk);
+  // the city burning
+  for (const F of SURF.fires) { const k = F.base * (0.72 + 0.28 * Math.sin(t * 6.3 + F.ph) * Math.sin(t * 2.7 + F.ph * 2.1)); F.s.material.opacity = k; F.s.scale.set(F.sc[0] * (0.92 + 0.1 * k), F.sc[1] * (0.88 + 0.16 * k), 1); }
+}
 // a point on the surface, relative to the hatch
 function brSurf(x, y, z) { return { x: SURF.ox + x, y, z: SURF.oz + z }; }
 function brToSurface() {
   Cinema.surface = true; Cinema.ca = -1;
+  SURF.flashes = []; SURF.thunders = []; SURF.flash = 0; SURF.giantShow = 0; SURF.eyesOn = false;
+  SURF.storm.flash.value = 0; SURF.storm.giant.value = 0; SURF.storm.eyes.value = 0; SURF.cloudM.uniforms.hole.value.set(0, 0, 0);
+  SURF.arm.visible = false; SURF.vortex.visible = false; SURF.shock.visible = false; for (const d of SURF.dust) d.s.visible = false;
   SURF.group.visible = true;
   if (World.group) World.group.visible = false;
   if (Cinema.brDeck) Cinema.brDeck.visible = false;
@@ -330,6 +517,9 @@ function brBloodBurst() {
   p.needsUpdate = true; SURF.blood.visible = true;
 }
 function updateBreachEnding(dt, t) {
+  // the moment its hand closes, everything slows almost to nothing - and then comes back all at once
+  const slow = Cinema.surface ? 1 - 0.74 * smoothstep(BR_T.grab - 0.4, BR_T.grab - 0.08, Cinema.t) * (1 - smoothstep(BR_T.grab + 0.5, BR_T.grab + 1.0, Cinema.t)) : 1;
+  dt *= slow;
   Cinema.t += dt; runCues();
   const T = Cinema.t, E = BR_T, S = Breach.silo, off = Cinema.brOff, kick = cineKick(dt);
   const cam = R.camera;
@@ -397,12 +587,12 @@ function updateBreachEnding(dt, t) {
   R.whiteFlash = Math.max(0, 1 - sk * 1.1);
   const dk = smooth01((T - E.shadow) / 0.6) * (1 - smooth01((T - E.gone) / 2.5));
   // the light: overcast, flat, brown; dimmed when it is overhead
-  R.hemi.color.setHex(0xb8b0a0); R.hemi.groundColor.setHex(0x4a4640); R.hemi.intensity = lerp(1.15, 0.45, dk);
-  R.key.color.setHex(0xd8c8a8); R.key.angle = 1.2; R.key.penumbra = 1; R.key.distance = 0; R.key.position.set(SURF.ox - 400, 300, SURF.oz - 900); R.key.target.position.set(SURF.ox, 0, SURF.oz); R.key.intensity = lerp(2.5e6, 0.6e6, dk);
+  R.hemi.color.setHex(0xa89880); R.hemi.groundColor.setHex(0x40302a); R.hemi.intensity = lerp(0.85, 0.35, dk);
+  R.key.color.setHex(0xe0a878); R.key.angle = 1.2; R.key.penumbra = 1; R.key.distance = 0; R.key.position.set(SURF.ox - 400, 300, SURF.oz - 900); R.key.target.position.set(SURF.ox, 0, SURF.oz); R.key.intensity = lerp(1.7e6, 0.45e6, dk);
   R.backlight.intensity = 0;
   SURF.skyM.uniforms.dim.value = lerp(1, 0.55, dk);
-  R.scene.fog.color.setRGB(0.36 * (1 - dk * 0.4), 0.33 * (1 - dk * 0.4), 0.29 * (1 - dk * 0.4)); R.scene.fog.density = 0.0026 + dk * 0.0015; R.scene.background.copy(R.scene.fog.color);
-  SURF.cloudM.map.offset.x += dt * 0.004;
+  R.scene.fog.color.setRGB(0.3 * (1 - dk * 0.4), 0.23 * (1 - dk * 0.4), 0.18 * (1 - dk * 0.4)); R.scene.fog.density = 0.0021 + dk * 0.0014; R.scene.background.copy(R.scene.fog.color);
+  brStorm(dt, t, T, dk);
   // the deck coming up out of the ground, locking flush
   const dy = lerp(-3.2, 0, smooth01((T - E.surface) / 1.4));
   SURF.deck.position.y = dy;
@@ -428,13 +618,14 @@ function updateBreachEnding(dt, t) {
       A = [lerpAngle(A[0], mid[0], up), lerp(A[1], Math.min(1.25, mid[1]), up)];
     }
     if (T > E.lift && hp) { const toH = LK(hp.x, hp.y - 4, hp.z), k3 = smooth01((T - E.lift) / 0.8); A = [lerpAngle(A[0], toH[0], k3), lerp(A[1], Math.min(1.3, toH[1]), k3)]; }
-    if (T > E.gone - 0.6) { const k2 = smooth01((T - E.gone + 0.6) / 2.2); A = [lerpAngle(A[0], city0[0], k2), lerp(A[1], city0[1] + 0.02, k2)]; }
+    // after it: up, slowly, at the shape the lightning shows standing over the city
+    if (T > E.gone - 0.6) { const gd = brGiantDir(), gL = LK(eye.x + gd.x * 100, eye.y + gd.y * 100, eye.z + gd.z * 100), k2 = smooth01((T - E.gone + 0.6) / 2.6); A = [lerpAngle(A[0], gL[0], k2), lerp(A[1], gL[1] - 0.05, k2)]; }
   }
   Cinema.brYaw = Cinema.brYaw === undefined ? A[0] : dampAngle(Cinema.brYaw, A[0], T > E.shriek && T < E.shriek + 0.6 ? 9 : 3, dt);
   Cinema.brPitch = Cinema.brPitch === undefined ? A[1] : damp(Cinema.brPitch, A[1], 3, dt);
   cam.position.set(eye.x, eye.y + kick * 0.6, eye.z);
   cam.rotation.set(Cinema.brPitch + kick * 0.4 + Math.sin(t * 1.1) * 0.006, Cinema.brYaw + Math.sin(t * 0.7) * 0.008, 0);
-  const fov = T > E.hand && T < E.gone ? 84 : 66;
+  const fov = T > E.hand && T < E.gone ? 86 : T > E.call ? 50 : 66;
   Cinema.fov = damp(Cinema.fov || 72, fov, 2, dt);
   if (Math.abs(cam.fov - Cinema.fov) > 0.05) { cam.fov = Cinema.fov; cam.updateProjectionMatrix(); }
   cineShake(dt, t);
@@ -461,7 +652,7 @@ function updateBreachEnding(dt, t) {
   R.fear = T > E.shriek && T < E.gone ? 0.85 : 0.2;
   if (T >= E.black) R.fade = 1; else R.fade = damp(R.fade, 0, 4, dt);
 }
-const _brHand = new THREE.Vector3(), _brFist = new THREE.Vector3();
+const _brHand = new THREE.Vector3(), _brFist = new THREE.Vector3(), _brE = new THREE.Euler();
 function brPaleAndHand(T, dt, t, eye) {
   const E = BR_T, P = Cinema.brPS, ov = _brOv; for (const k in ov) delete ov[k];
   const base = brSurf(P.x, 0, P.z), toCam0 = Math.atan2(eye.x - base.x, eye.z - base.z);
@@ -479,25 +670,49 @@ function brPaleAndHand(T, dt, t, eye) {
     const lk = smooth01((T - E.stop) / 0.4);
     ov.neckPitch = -0.9 * lk; ov.headPitch = -0.6 * lk; ov.lookFwd = true; ov.still = true; ov.lean = -0.1 * lk; ov.jaw = 0.5 * lk;
   }
-  // the hand: down out of the cloud behind it, open, slowing as it comes; shut round it; up, and gone
+  // The hand: down out of the cloud on the end of its arm, open, slowing as it comes; shut round it; back up the
+  // way it came, and gone. The arm runs from it all the way up into the storm, through a hole the cloud turns
+  // round; when it closes, the air it pushes down runs out across the ground in a ring of dust.
   const H = Colossus;
+  const showArm = H.ready && T > E.hand - 0.1 && T < E.gone + 0.5;
   if (H.ready && T > E.hand - 0.1) {
     H.root.visible = T < E.gone + 0.5;
     const back = 1.6, tx = x - Math.sin(toCam0) * back, tz = z - Math.cos(toCam0) * back, ty = 2.6 + 8.2;
-    let hx = tx, hy = ty, hz = tz, curl = 0.04, thumb = 0.05, wrist = 0.35;
+    // the line of its arm, from where the hand closes up to its shoulder
+    const up = _brA.copy(brShoulder(_brB)).sub(_brG2.set(tx, ty, tz)).normalize();
+    let along = 0, curl = 0.04, thumb = 0.05, wrist = 0.35;
     if (T < E.grab) {
       const u = clamp((T - E.hand) / (E.grab - E.hand), 0, 1), k = 1 - Math.pow(1 - u, 3);
-      hx = lerp(x - Math.sin(toCam0) * 7, tx, k); hz = lerp(z - Math.cos(toCam0) * 7, tz, k); hy = lerp(160, ty, k);
-      wrist = lerp(0.6, 0.35, k);
+      along = lerp((165 - ty) / Math.max(up.y, 0.2), 0, k); wrist = lerp(0.6, 0.35, k);
     } else {
       const k = smooth01((T - E.grab) / 0.28), lk = smooth01((T - E.lift) / (E.gone - E.lift));
-      hy = ty + lk * lk * 175; hx = tx - Math.sin(toCam0) * lk * 20; hz = tz - Math.cos(toCam0) * lk * 20;
+      along = lk * lk * 230;
       curl = lerp(0.04, 0.93, k); thumb = lerp(0.05, 1.0, k); wrist = lerp(0.35, 0.12, k);
       H.gore = Math.min(1, H.gore + dt * 2);
     }
-    H.root.position.set(hx, hy, hz);
-    H.root.rotation.set(0, toCam0 + Math.PI, 0);
+    H.root.position.set(tx + up.x * along, ty + up.y * along, tz + up.z * along);
+    // turned to face round over it, and tipped back along the line of the arm
+    _brQ.setFromEuler(_brE.set(0, toCam0 + Math.PI, 0)); _brQ2.setFromUnitVectors(_brB.set(0, 1, 0), up);
+    H.root.quaternion.copy(_brQ2).multiply(_brQ);
     colossusPose(curl + (T > E.grab + 0.3 && T < E.lift + 0.4 ? Math.sin(T * 20) * 0.03 : 0), thumb, wrist);
+    if (showArm) {
+      // the rest of the arm, from the top of the forearm up to the shoulder
+      const s0 = H.root.localToWorld(_brG2.set(0, 3.4, -0.3)), s1 = brShoulder(_brB), len = s0.distanceTo(s1);
+      SURF.arm.visible = true;
+      SURF.arm.position.copy(s0).add(s1).multiplyScalar(0.5);
+      SURF.arm.scale.set(2.0 * 3.4 * 0.32, len, 2.0 * 3.4 * 0.32);
+      SURF.arm.quaternion.setFromUnitVectors(_brG.set(0, 1, 0), _brHand.copy(s1).sub(s0).normalize());
+      // where it comes through the cloud
+      const kk = (150 - s0.y) / Math.max(0.05, s1.y - s0.y), cx = lerp(s0.x, s1.x, clamp(kk, 0, 1)), cz = lerp(s0.z, s1.z, clamp(kk, 0, 1));
+      const open = smooth01((T - E.shadow + 0.3) / 1.2) * (1 - smooth01((T - E.gone + 0.3) / 0.9));
+      SURF.cloudM.uniforms.hole.value.set(cx, cz, 34 * open);
+      SURF.vortex.visible = open > 0.02;
+      SURF.vortex.children.forEach((sp) => {
+        const u = sp.userData, a = u.a + T * (0.35 + 0.15 * u.r), rr = (26 + 30 * u.r) * (0.6 + 0.4 * open);
+        sp.position.set(cx + Math.cos(a) * rr, 150 + u.y * 60 - (1 - u.r) * 25 * open, cz + Math.sin(a) * rr);
+        sp.scale.set(90 * u.s, 60 * u.s, 1); sp.material.opacity = 0.85 * open; sp.material.rotation = a;
+      });
+    }
     // the Pale, in its fist: lifted with it, thrashing, then still
     if (T > E.grab) {
       const pk = smooth01((T - E.grab) / 0.28);
@@ -511,6 +726,21 @@ function brPaleAndHand(T, dt, t, eye) {
       ov.footR = new THREE.Vector3(x - 0.15, y + 0.05 + Math.cos(T * 15) * 0.2 * alive, z - 0.1);
       ov.headRoll = (1 - alive) * 0.9;
     }
+  }
+  if (!showArm) { SURF.arm.visible = false; if (T > E.gone + 0.5) { SURF.vortex.visible = false; SURF.cloudM.uniforms.hole.value.set(0, 0, 0); } }
+  // the blast of air as it closes: a ring of dust out across the ground, and the dust thrown up with it
+  const bk = (T - E.grab + 0.05) / 1.9;
+  SURF.shock.visible = bk > 0 && bk < 1;
+  if (SURF.shock.visible) {
+    const rr = lerp(3, 60, 1 - Math.pow(1 - bk, 2.2));
+    SURF.shock.position.set(base.x, 0.15, base.z); SURF.shock.scale.set(rr * 2, 1, rr * 2); SURF.shock.material.opacity = 0.75 * (1 - bk);
+  }
+  for (const D of SURF.dust) {
+    const on = bk > 0 && bk < 1.4; D.s.visible = on;
+    if (!on) continue;
+    const dd = D.v * Math.pow(bk, 0.6) * 2.4;
+    D.s.position.set(base.x + Math.cos(D.a) * (2 + dd), 1.5 + bk * 4, base.z + Math.sin(D.a) * (2 + dd));
+    const sc = 6 + bk * 18; D.s.scale.set(sc, sc * 0.7, 1); D.s.material.opacity = 0.6 * Math.min(1, bk * 6) * (1 - bk / 1.4);
   }
   Object.assign(Pale, { x, z, y, yaw, speed: sp, mode, look: T > E.shriek && T < E.stop ? R.camera.position : null, ov });
   setPaleVisible(T < E.gone + 0.5);
@@ -528,6 +758,7 @@ function breachEndingLeave() {
   if (World.group) World.group.visible = true;
   if (Breach.hatch) Breach.hatch.g.visible = true;
   if (Colossus.root) Colossus.root.visible = false;
+  if (SURF.arm) { SURF.arm.visible = false; SURF.vortex.visible = false; SURF.shock.visible = false; for (const d of SURF.dust) d.s.visible = false; }
   setPaleVisible(false);
   if (SURF.saved) { WS.field.value = SURF.saved.f; WS.fieldXf.value.copy(SURF.saved.xf); SURF.saved = null; }
   Debris.free = false;

@@ -625,6 +625,8 @@ function liftGoesUp() { return Game.levelKey === 'l3'; }
 // B5 has the Chud; A1 has the Pale. Both are beasts (45-beast.js) with a kill of their own; this is how the
 // rest of the game asks about whichever one is here without caring which.
 function levelHasBeast(lv) { return lv === 'l2' || lv === 'l3'; }
+// a kill by the Chud (c: 1) or the Pale (c: 2) - not one by the thing on B4, which has a choreography of its own
+function isBeastKill(kl) { return !!kl && (kl.c === 1 || kl.c === 2); }
 function beastKillLen(kl) { return kl && kl.c === 2 ? PALE_KILL : CHUD_KILL; }
 function beastKillBody(kl, T) { return kl && kl.c === 2 ? paleKillBody(kl, T) : chudKillBody(kl, T); }
 function beastKillCam(kl, T, dt, t) { if (kl.c === 2) paleKillCam(T, dt, t); else chudKillCam(T, dt, t); }
