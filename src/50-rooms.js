@@ -2,13 +2,12 @@
 // A host can make their room public. Public rooms show in everyone's "Find a room" list with the room's name,
 // its map, who is in it and whether the game has started; private ones are only for whoever has the code.
 // Inside Claude the list is the lobby every open copy of the page shares: a public host's presence there
-// carries its room. Everywhere else it goes through the matchmaking server (PeerJS's), which passes small
-// messages between ids - it is how two players' browsers find each other before they connect. A public host
-// holds one of a dozen well-known ids, a "slot", and answers "which room is this?"; the list asks every slot.
+// carries its room. Everywhere else a public host also holds one of a dozen well-known PeerJS ids, a "slot";
+// the list connects to every slot, the same way players connect to a room, and each host says what its room is.
 const ROOM_MAX = 4;               // players a room is for: a full one can't be joined from the list
 const PUB_SLOTS = 12;             // how many public rooms the standalone list can hold at once
-const PUB_SCAN_MS = 3500;         // how long the list waits for the slots to answer (a host answers in well under a second)
-const PUB_RESCAN_MS = 6000;       // while the list is open, it asks again this often
+const PUB_SCAN_MS = 9000;         // how long the list waits for the slots to answer (connecting takes a few seconds)
+const PUB_RESCAN_MS = 15000;      // while the list is open, it looks again this long after the last look
 const MAP_SHORT = { l1: 'Reach - B4', l2: 'Seize - B5', l3: 'Breach - A1', camp: 'Campaign' };
 const Rooms = {
   // hosting: what this room says about itself, and (standalone) the slot it holds
@@ -17,7 +16,6 @@ const Rooms = {
   open: false, list: [], scanning: false, looked: false, scanId: 0, scanAt: 0, scan: null, look: null, err: '', since: 0, unsub: null, drawn: '', msg: null,
 };
 const slotId = (i) => 'reach-jason-pub-' + i;
-const randomToken = () => Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);
 
 // a room name: what someone typed, made safe to show anyone - no control or invisible characters, one line
 function cleanTitle(v, fallback) {
@@ -69,81 +67,59 @@ function roomsLeft() {
   if (!IN_CLAUDE) dropSlot(0);
 }
 
-// standalone: a line to the matchmaking server under an id of our own, the way PeerJS itself talks to it.
-// Resolves once the server has given us the id; rejects 'taken' if someone else holds it, 'server' if the
-// server can't be reached. onMessage(msg, line) hears what others send to the id.
-function serverLine(id, onMessage, onClose) {
-  return new Promise((res, rej) => {
-    const S = PEER_SERVER;
-    const url = (S.secure ? 'wss://' : 'ws://') + S.host + ':' + S.port + S.path + 'peerjs?key=' + encodeURIComponent(S.key) + '&id=' + encodeURIComponent(id) + '&token=' + randomToken() + '&version=1.5.4';
-    let ws = null, open = false, beat = 0;
-    const line = {
-      id, closed: false,
-      send(m) { try { if (ws.readyState === 1) ws.send(JSON.stringify(m)); } catch (e) { /* closing */ } },
-      close() { line.closed = true; clearInterval(beat); try { ws.close(); } catch (e) { /* closed */ } },
-    };
-    const fail = (code) => { if (open) return; clearTimeout(to); line.close(); rej(Object.assign(new Error(code), { code })); };
-    const to = setTimeout(() => fail('server'), 10000);
-    try { ws = new WebSocket(url); } catch (e) { fail('server'); return; }
-    ws.onmessage = (e) => {
-      let m = null;
-      try { m = JSON.parse(e.data); } catch (err) { return; }
-      if (!m || typeof m !== 'object') return;
-      if (!open) {
-        if (m.type === 'OPEN') {
-          open = true; clearTimeout(to);
-          // the server drops an id it hasn't heard from in a while
-          beat = setInterval(() => line.send({ type: 'HEARTBEAT' }), 5000);
-          res(line);
-        } else if (m.type === 'ID-TAKEN') fail('taken');
-        else if (m.type === 'ERROR') fail('server');
-        return;
-      }
-      onMessage(m, line);
-    };
-    ws.onerror = () => fail('server');
-    ws.onclose = () => { clearInterval(beat); if (!open) { fail('server'); return; } if (!line.closed) { line.closed = true; if (onClose) onClose(line); } };
-  });
-}
-
-// standalone: take the first free slot, starting from a random one so two hosts rarely want the same
+// standalone: take the first free slot - a PeerJS peer under that id - starting from a random one so two
+// hosts rarely want the same. Anyone looking at the list connects to it, the same way a player joins a room,
+// and is told about the room.
 async function claimSlot() {
   Rooms.claiming = true;
   try {
+    await loadPeerJs();
+    const extra = await openRelayServer();
     const first = Math.floor(Math.random() * PUB_SLOTS);
     for (let k = 0; k < PUB_SLOTS; k++) {
       if (!Rooms.info) return;
-      const i = (first + k) % PUB_SLOTS;
-      let line;
-      try { line = await serverLine(slotId(i), slotMessage, slotLost); }
-      catch (e) {
-        if (e && e.code === 'taken') continue;
-        Rooms.claimAt = performance.now() + 20000;
-        return;
-      }
-      if (!Rooms.info || Rooms.slotLine) { line.close(); return; }
-      Rooms.slotLine = line; Rooms.slot = i; Rooms.full = false;
+      const got = await openSlot((first + k) % PUB_SLOTS, extra);
+      if (got === 'taken') continue;
+      if (got === 'fail') { Rooms.claimAt = performance.now() + 20000; return; }
+      if (!Rooms.info || Rooms.slotLine) { try { got.peer.destroy(); } catch (e) { /* gone */ } return; }
+      Rooms.slotLine = got.peer; Rooms.slot = got.i; Rooms.full = false;
       return;
     }
     // every slot is someone's: still joinable with the code; try the list again in a while
     Rooms.full = true; Rooms.claimAt = performance.now() + 30000;
-  } finally { Rooms.claiming = false; }
+  } catch (e) { Rooms.claimAt = performance.now() + 20000; }
+  finally { Rooms.claiming = false; }
 }
-// someone looking at the list asks which room this is
-function slotMessage(m, line) {
-  if (m.type !== 'OFFER' || typeof m.src !== 'string' || !m.payload || m.payload.reach !== 'room?' || !Rooms.info) return;
-  line.send({ type: 'ANSWER', dst: m.src, payload: { reach: 'room', q: String(m.payload.q || '').slice(0, 16), r: Rooms.info } });
-}
-// the server let go of the slot: take one again in a moment
-function slotLost(line) {
-  if (Rooms.slotLine !== line) return;
-  Rooms.slotLine = null; Rooms.slot = -1; Rooms.claimAt = performance.now() + 3000;
+// resolves { peer, i } once the slot is ours, 'taken' if someone else holds it, 'fail' if the server can't be reached
+function openSlot(i, extra) {
+  return new Promise((res) => {
+    let peer = null, over = false;
+    const end = (v) => { if (over) return; over = true; clearTimeout(to); if (typeof v === 'string' && peer) { try { peer.destroy(); } catch (e) { /* gone */ } } res(v); };
+    const to = setTimeout(() => end('fail'), 15000);
+    try { peer = new window.Peer(slotId(i), peerOptions(extra)); } catch (e) { end('fail'); return; }
+    peer.on('open', () => end({ peer, i }));
+    peer.on('error', (err) => {
+      const type = err && err.type;
+      if (!over) { end(type === 'unavailable-id' ? 'taken' : 'fail'); return; }
+      // it was ours and the server has let go of it: take a slot again in a moment
+      if (Rooms.slotLine === peer && ['unavailable-id', 'network', 'server-error', 'socket-error', 'socket-closed'].includes(type)) dropSlot(5000);
+    });
+    // someone looking at the list: tell them about the room, then hang up
+    peer.on('connection', (conn) => {
+      conn.on('open', () => {
+        if (Rooms.info) { try { conn.send({ t: 'room', r: Rooms.info }); } catch (e) { /* they went */ } }
+        setTimeout(() => { try { conn.close(); } catch (e) { /* closed */ } }, Rooms.info ? 5000 : 0);
+      });
+      conn.on('error', () => { /* they went */ });
+    });
+    peer.on('disconnected', () => { if (!peer.destroyed) setTimeout(() => { try { if (!peer.destroyed && peer.disconnected) peer.reconnect(); } catch (e) { /* next time */ } }, 1500); });
+  });
 }
 function dropSlot(retryIn) {
-  const line = Rooms.slotLine;
+  const p = Rooms.slotLine;
   Rooms.slotLine = null; Rooms.slot = -1; Rooms.full = false;
   Rooms.claimAt = performance.now() + retryIn;
-  if (line) line.close();
+  if (p) { try { p.destroy(); } catch (e) { /* gone */ } }
 }
 // what the host sees about the list, under Private / Public
 function roomListState() {
@@ -171,8 +147,8 @@ function roomListClose() {
   if (!Rooms.open) return;
   Rooms.open = false; Rooms.scanId += 1; Rooms.scanning = false; Rooms.scan = null;
   if (Rooms.unsub) { try { Rooms.unsub(); } catch (e) { /* gone */ } Rooms.unsub = null; }
-  const line = Rooms.look; Rooms.look = null;
-  if (line) line.close();
+  const p = Rooms.look; Rooms.look = null;
+  if (p) { try { p.destroy(); } catch (e) { /* gone */ } }
 }
 function roomListRefresh() {
   if (!Rooms.open) return;
@@ -192,59 +168,75 @@ function lobbyRooms() {
   }
   return out;
 }
-// standalone: one line to the server, kept while the list is open, asks every slot at once
-async function lookLine() {
-  if (Rooms.look && !Rooms.look.closed) return Rooms.look;
-  const line = await serverLine('reach-jason-look-' + randomToken(), lookMessage, (l) => { if (Rooms.look === l) Rooms.look = null; });
-  if (!Rooms.open) { line.close(); throw Object.assign(new Error('closed'), { code: 'closed' }); }
-  Rooms.look = line;
-  return line;
+// standalone: one peer, kept while the list is open, connects to every slot at once; the empty ones the
+// server reports after a few seconds
+async function lookPeer() {
+  if (Rooms.look && !Rooms.look.destroyed && Rooms.look.open) return Rooms.look;
+  if (Rooms.look) { try { Rooms.look.destroy(); } catch (e) { /* gone */ } Rooms.look = null; }
+  await loadPeerJs();
+  const extra = await openRelayServer();
+  return new Promise((res, rej) => {
+    let peer;
+    const fail = (code) => rej(Object.assign(new Error(code), { code }));
+    try { peer = new window.Peer(peerOptions(extra)); } catch (e) { fail('server'); return; }
+    if (!Rooms.open) { try { peer.destroy(); } catch (e) { /* gone */ } fail('closed'); return; }
+    Rooms.look = peer;
+    const to = setTimeout(() => fail('server'), 15000);
+    peer.on('open', () => { clearTimeout(to); res(peer); });
+    peer.on('error', (err) => {
+      if (err && err.type === 'peer-unavailable') { const m = /reach-jason-pub-(\d+)/.exec(String(err.message || '')); if (m && Rooms.scan) Rooms.scan.settle(+m[1]); return; }
+      if (!peer.open) { clearTimeout(to); fail('server'); }
+    });
+  });
 }
 async function scanRooms() {
   if (Rooms.scanning || !Rooms.open) return;
   const id = ++Rooms.scanId;
   Rooms.scanning = true; renderRoomList();
-  let line;
-  try { line = await lookLine(); }
+  let peer;
+  try { peer = await lookPeer(); }
   catch (e) {
-    if (id === Rooms.scanId) { Rooms.scanning = false; Rooms.looked = true; Rooms.err = 'server'; Rooms.scanAt = performance.now(); renderRoomList(); }
+    if (id === Rooms.scanId) { Rooms.scanning = false; Rooms.looked = true; Rooms.err = e && e.code === 'closed' ? '' : 'server'; Rooms.scanAt = performance.now(); renderRoomList(); }
     return;
   }
   if (id !== Rooms.scanId) return;
   if (Rooms.err) { Rooms.err = ''; renderRoomList(); }
-  const found = new Map(), q = randomToken().slice(0, 12);
+  const found = new Map(), conns = [];
   await new Promise((done) => {
     const waiting = new Set();
     let over = false;
-    const finish = () => { if (over) return; over = true; clearTimeout(to); if (Rooms.scan && Rooms.scan.q === q) Rooms.scan = null; done(); };
+    const finish = () => { if (over) return; over = true; clearTimeout(to); if (Rooms.scan && Rooms.scan.id === id) Rooms.scan = null; done(); };
+    const settle = (i) => { waiting.delete(i); if (!waiting.size) finish(); };
     const to = setTimeout(finish, PUB_SCAN_MS);
     for (let i = 0; i < PUB_SLOTS; i++) waiting.add(i);
-    Rooms.scan = { q, id, found, settle: (i) => { waiting.delete(i); if (!waiting.size) finish(); } };
-    for (let i = 0; i < PUB_SLOTS; i++) line.send({ type: 'OFFER', dst: slotId(i), payload: { reach: 'room?', q } });
+    Rooms.scan = { id, settle };
+    for (let i = 0; i < PUB_SLOTS; i++) {
+      let conn = null;
+      try { conn = peer.connect(slotId(i), { serialization: 'json', reliable: true }); } catch (e) { conn = null; }
+      if (!conn) { settle(i); continue; }
+      conns.push(conn);
+      conn.on('data', (msg) => {
+        const r = msg && msg.t === 'room' ? readRoomInfo(msg.r) : null;
+        if (r && id === Rooms.scanId) {
+          found.set(r.c, r);
+          // straight onto the list, beside what the last look found
+          Rooms.list = Rooms.list.filter((x) => x.c !== r.c).concat(r);
+          renderRoomList();
+        }
+        settle(i);
+        try { conn.close(); } catch (e) { /* closed */ }
+      });
+      conn.on('error', () => settle(i));
+      conn.on('close', () => settle(i));
+    }
   });
+  for (const c of conns) { try { c.close(); } catch (e) { /* closed */ } }
   if (id !== Rooms.scanId) return;
   Rooms.list = [...found.values()];
   Rooms.scanning = false; Rooms.looked = true; Rooms.scanAt = performance.now();
   renderRoomList();
 }
-// a slot answers with its room (or the server says nobody holds it)
-function lookMessage(m) {
-  const sc = Rooms.scan;
-  const src = typeof m.src === 'string' ? m.src : '';
-  const i = /^reach-jason-pub-(\d{1,2})$/.test(src) ? +src.slice(16) : -1;
-  if (!sc || i < 0 || i >= PUB_SLOTS) return;
-  if (m.type === 'ANSWER' && m.payload && m.payload.reach === 'room' && m.payload.q === sc.q) {
-    const r = readRoomInfo(m.payload.r);
-    if (r && sc.id === Rooms.scanId) {
-      sc.found.set(r.c, r);
-      // straight onto the list, beside what the last look found
-      Rooms.list = Rooms.list.filter((x) => x.c !== r.c).concat(r);
-      renderRoomList();
-    }
-    sc.settle(i);
-  } else if (m.type === 'EXPIRE' || m.type === 'LEAVE') sc.settle(i);
-}
-// while the list is open (standalone): ask again now and then, while anyone can see it
+// while the list is open (standalone): look again now and then, while anyone can see it
 function roomListTick() {
   if (!Rooms.open || IN_CLAUDE || Rooms.scanning || document.hidden) return;
   if (performance.now() - Rooms.scanAt > PUB_RESCAN_MS) scanRooms();
