@@ -2,7 +2,7 @@
 # Builds two files: the artifact page (no document wrapper) and a standalone index.html.
 set -e
 cd "$(dirname "$0")"
-JS="src/10-core.js src/12-maps.js src/14-level.js src/20-audio.js src/30-textures.js src/31-gputex.js src/32-geo.js src/33-props.js src/34-world.js src/35-dynamic.js src/36-render.js src/37-dress.js src/38-shading.js src/39-lift.js src/40-creature.js src/42-humans.js src/44-lair.js src/45-beast.js src/46-chud.js src/47-seize.js src/48-wards.js src/49-pale.js src/50-net.js src/51-breach.js src/52-game.js src/53-player.js src/54-hud.js src/55-touch.js src/56-cinema.js src/57-ending.js src/58-kill.js src/59-surface.js src/60-main.js"
+JS="src/10-core.js src/12-maps.js src/14-level.js src/20-audio.js src/30-textures.js src/31-gputex.js src/32-geo.js src/33-props.js src/34-world.js src/35-dynamic.js src/36-render.js src/37-dress.js src/38-shading.js src/39-lift.js src/40-creature.js src/42-humans.js src/44-lair.js src/45-beast.js src/46-chud.js src/47-seize.js src/48-wards.js src/49-pale.js src/50-net.js src/50-rooms.js src/51-breach.js src/52-game.js src/53-player.js src/54-hud.js src/55-touch.js src/56-cinema.js src/57-ending.js src/58-kill.js src/59-surface.js src/60-main.js"
 mkdir -p dist standalone
 body() {
   cat src/01-head.html

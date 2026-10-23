@@ -1,6 +1,6 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto' };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '' };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -23,6 +23,9 @@ function loadSettings() {
   Settings.early = saved.early === true;   // Seize - B5 and Breach - A1 unlocked with the early access code
   Settings.map = saved.map === 'camp' ? 'camp' : EARLY_MAPS.includes(saved.map) && Settings.early ? saved.map : 'l1';
   Settings.ui = [0.7, 0.85, 1].includes(saved.ui) ? saved.ui : 0.85;
+  // the rooms you host: private (code only) unless you say otherwise, and what you called them
+  Settings.roomVis = saved.roomVis === 'public' ? 'public' : 'private';
+  Settings.roomName = cleanTitle(saved.roomName);
   applyUiSize();
   applyControls();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
@@ -33,7 +36,8 @@ function saveSettings() {
   if (v) Settings.name = v;
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
-      gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls }));
+      gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls,
+      roomVis: Settings.roomVis, roomName: Settings.roomName }));
   } catch (e) { /* storage blocked */ }
 }
 
@@ -77,9 +81,13 @@ function unlockEarlyAccess(want) {
   Settings.early = true; Settings.map = EARLY_MAPS.includes(want) ? want : 'l2'; saveSettings(); renderMaps();
   netNote('Early access unlocked: Seize - B5 and Breach - A1. ' + MAP_NAMES[Settings.map].split(' · ')[0] + ' is selected.');
 }
+// each group draws itself again whenever its setting may have changed underneath it
+const SegRender = {};
+function renderSegs() { for (const id in SegRender) SegRender[id](); }
 function wireSegs(id, key, apply, parse = (v) => v) {
   const box = $(id);
   const render = () => box.querySelectorAll('button').forEach((b) => { const on = String(Settings[key]) === b.dataset.v; b.classList.toggle('on', on); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(on)); });
+  SegRender[id] = render;
   box.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     Settings[key] = parse(b.dataset.v); saveSettings(); render();
@@ -185,18 +193,31 @@ async function startGame() {
   enterRound(Game.g);
 }
 
-async function goOnline(code, creator) {
+// what I tell the room while we are all in its lobby
+function lobbyState() {
+  const st = { v: 1, n: Settings.name, c: Settings.color, cr: Net.creator ? 1 : 0, mic: Sound.hasMic ? 1 : 0, mp: Settings.map };
+  if (Net.creator) st.rt = roomTitle();
+  return st;
+}
+async function goOnline(code, creator, fromList) {
   saveSettings();
+  Lobby.joining = true;
   setMenuBusy(true);
   netNote(creator ? 'Opening a room…' : 'Joining ' + code + '…');
   try {
     await netJoin(code, creator);
   } catch (e) {
+    Lobby.joining = false;
     setMenuBusy(false);
     renderLobbyUI();
-    netNote(joinFailReason(e && e.code), true);
+    const why = e && e.code;
+    netNote(fromList && why === 'missing' ? 'That room has just closed. Pick another one.' : joinFailReason(why), true);
+    if (fromList) roomListRefresh();
     return;
   }
+  Lobby.joining = false;
+  Lobby.view = 'main';
+  Net.myState = lobbyState();
   setMenuBusy(false);
   Game.g = null; Game.round = -1; Game.lostShown = false;
   Game.joinedAt = performance.now();
@@ -218,7 +239,7 @@ function joinFailReason(code) {
     case 'lib': return "Couldn't load the online part of the game. Check your internet connection - some school networks block it.";
     case 'browser': return "This browser can't do online play. Try a recent Chrome, Edge or Firefox.";
     case 'timeout': return relay ? "Couldn't reach the host, even through the relay. Check the code, and that the host is still in the room - or try a phone hotspot."
-      : "Couldn't reach the host. Both of you set Settings > Connection to Relay, then try again (school and college Wi-Fi need this).";
+      : "Couldn't reach the host. Both of you set Settings > Online > Connection to Relay, then try again (school and college Wi-Fi need this).";
     default: return "Couldn't connect. Check your internet connection and try again.";
   }
 }
@@ -226,7 +247,7 @@ function joinFailReason(code) {
 // what the menu says about co-op when nothing is going on
 function readyNote() {
   if (!NetCaps.online) return IN_CLAUDE ? joinFailReason('noroom') : "Co-op isn't available here. Solo works.";
-  return IN_CLAUDE ? 'Co-op is ready. Voice chat works in the standalone version.' : 'Co-op is ready. Host a room or join with a code.';
+  return IN_CLAUDE ? 'Co-op is ready. Voice chat works in the standalone version.' : 'Co-op is ready. Host a room, find a public one, or join with a code.';
 }
 
 async function leaveOnline() {
@@ -244,28 +265,39 @@ async function connectionLost() {
   netNote(why + ' Host a new room, or join another.', true);
 }
 
-function netNote(text, warn) { const n = $('net-note'); n.textContent = text; n.classList.toggle('warn', !!warn); }
+function netNote(text, warn) {
+  const n = $('net-note'); n.textContent = text; n.classList.toggle('warn', !!warn);
+  // with the room list open, it says it there
+  if (Rooms.open) { Rooms.msg = { text, warn: !!warn, until: performance.now() + 7000 }; renderRoomList(); }
+}
 function setMenuBusy(busy) {
-  $('btn-host').disabled = busy || !NetCaps.online;
-  $('btn-join').disabled = busy || !NetCaps.online;
+  Game.menuBusy = busy;
+  for (const id of ['btn-host', 'btn-join', 'btn-browse', 'btn-browse-host']) $(id).disabled = busy || !NetCaps.online;
   $('btn-solo').disabled = busy;
+  renderRoomList();
 }
 
 let NetCaps = { online: false, voice: false };
+// which of the menu's pages is up: the main one, or the list of public rooms (in a room, it is the room's)
+const Lobby = { view: 'main', joining: false, roomFor: '' };
 function renderLobbyUI() {
-  const online = Net.mode !== 'solo';
-  $('menu-main').hidden = online;
-  $('menu-room').hidden = !online;
-  $('mic-row').hidden = !NetCaps.voice;
+  const online = Net.mode !== 'solo' && !Lobby.joining;
+  const view = online ? 'room' : Lobby.view === 'browse' && NetCaps.online ? 'browse' : 'main';
+  $('menu-main').hidden = view !== 'main';
+  $('menu-browse').hidden = view !== 'browse';
+  $('menu-room').hidden = view !== 'room';
+  if (view === 'browse') roomListOpen(); else roomListClose();
   // these only mean something in the standalone version: voice chat and the peer-to-peer connection
+  $('mic-row').hidden = !NetCaps.voice;
   $('whisper').closest('label').hidden = !NetCaps.voice;
   $('netmode').closest('.field').hidden = IN_CLAUDE;
-  if (!online) return;
+  if (view === 'browse') renderRoomList();
+  if (view !== 'room') { Lobby.roomFor = ''; return; }
   setText($('room-code'), Net.code);
   const link = inviteLinkFor(Net.code);
   setText($('invite-link'), link || 'Code: ' + Net.code);
   setText($('btn-copy'), link ? 'Copy link' : 'Copy code');
-  setText($('invite-note'), IN_CLAUDE ? 'Share this page with each friend first (Share button: invite them - a public link can\'t join co-op). They sign in to Claude, open it and type the code. Voice chat needs the standalone version.' : 'Send your friends the link, or have them open the game and type the code. On school or college Wi-Fi, everyone set Settings > Connection to Relay first.');
+  setText($('invite-note'), IN_CLAUDE ? 'Share this page with each friend first (Share button: invite them - a public link can\'t join co-op). They sign in to Claude, open it and type the code. Voice chat needs the standalone version.' : 'Send your friends the link, or have them open the game and type the code. On school or college Wi-Fi, everyone set Settings > Online > Connection to Relay first.');
   const peers = netPeers(), host = netHostId();
   const ul = $('roster'); ul.textContent = '';
   for (const p of peers) {
@@ -278,6 +310,18 @@ function renderLobbyUI() {
   const iHost = netIsHost();
   $('btn-start').hidden = !iHost;
   const hostP = peers.find((p) => p.id === host);
+  // the room's name and who can find it: the host's to set, everyone else's to see
+  $('room-name-field').hidden = !iHost; $('room-vis-field').hidden = !iHost; $('room-title-box').hidden = iHost;
+  if (iHost) {
+    const inp = $('room-name');
+    if (Lobby.roomFor !== Net.code) { Lobby.roomFor = Net.code; inp.value = Settings.roomName; SegRender['room-vis'](); }
+    inp.placeholder = defaultRoomTitle();
+    const ls = roomListState();
+    setText($('vis-note'), ls === 'private' ? 'Only people with the code or the link can join.'
+      : ls === 'listed' ? (IN_CLAUDE ? 'Listed under Find a room for everyone who has this page open.' : 'Listed under Find a room for everyone playing REACH.')
+      : ls === 'full' ? 'The public list is full right now. It goes on as soon as there is space; the code works meanwhile.'
+      : 'Putting it on the public list…');
+  } else setText($('room-title'), cleanTitle(hostP && hostP.s.rt) || defaultRoomTitle(hostP ? hostP.s.n : 'The host'));
   setText($('room-map'), 'Map · ' + (MAP_NAMES[iHost ? Settings.map : hostP && hostP.s.mp] || MAP_NAMES.l1));
   let status;
   if (Net.lost) status = (Net.lostReason || 'Lost the connection.') + ' Leave, then host or join again.';
@@ -286,6 +330,35 @@ function renderLobbyUI() {
   else if (!host && performance.now() - (Game.joinedAt || 0) > 5000) status = peers.length < 2 ? 'Nobody else is here yet. Check the code, or wait for the host.' : 'The host isn\'t in this room. Check the code with them.';
   else status = 'Waiting for the host to start.';
   setText($('room-status'), status);
+}
+
+// ---------- the settings: a small card over the menu, or over the game while it is paused ----------
+const SetUI = { tab: 'game', from: null };
+function settingsOpen() { return !$('settings').hidden; }
+function openSettings() {
+  if (settingsOpen()) return;
+  SetUI.from = document.activeElement;
+  if (Touch.on) touchRelease();
+  renderSegs();
+  settingsTab($('tab-online').hidden && SetUI.tab === 'online' ? 'game' : SetUI.tab);
+  // what is behind the card can't be tabbed to or clicked while it is up
+  for (const id of ['lobby', 'pause', 'hud']) $(id).inert = true;
+  $('settings').hidden = false;
+  try { $('set-close').focus({ preventScroll: true }); } catch (e) { /* fine */ }
+}
+function closeSettings() {
+  if (!settingsOpen()) return;
+  $('settings').hidden = true;
+  for (const id of ['lobby', 'pause', 'hud']) $(id).inert = false;
+  saveSettings();
+  const back = SetUI.from; SetUI.from = null;
+  if (back && back !== document.body && document.contains(back) && back.offsetParent !== null) { try { back.focus({ preventScroll: true }); } catch (e) { /* fine */ } }
+}
+function settingsTab(tab) {
+  SetUI.tab = tab;
+  document.querySelectorAll('#set-tabs [data-tab]').forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; });
+  document.querySelectorAll('#settings .set-pane').forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+  $('settings').querySelector('.set-body').scrollTop = 0;
 }
 
 // ---------- input ----------
@@ -305,7 +378,9 @@ function lockPointer(fromClick) {
 function wireInput() {
   const c = $('view');
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'Escape' && settingsOpen()) { closeSettings(); e.preventDefault(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (settingsOpen()) return;
     if (Game.keypad && !e.repeat && keypadKey(e)) { e.preventDefault(); return; }
     if (Game.reading && (e.code === 'KeyE' || e.code === 'Escape')) { closeNote(); e.preventDefault(); return; }
     Input.keys[e.code] = true;
@@ -382,6 +457,37 @@ function wireMenus() {
   wireSegs('rdist', 'rdist', () => applyRenderDistance(), Number);
   wireSegs('netmode', 'net', null);
   wireSegs('ctlmode', 'controls', applyControls);
+  wireSegs('room-vis', 'roomVis', () => { Rooms.tickAt = 0; renderLobbyUI(); }, (v) => (v === 'public' ? 'public' : 'private'));
+  // settings: the gear in the menu, Settings on the pause card (inside Claude there is nothing for the Online tab)
+  $('tab-online').hidden = IN_CLAUDE;
+  $('btn-settings').addEventListener('click', openSettings);
+  $('btn-pause-settings').addEventListener('click', openSettings);
+  $('set-close').addEventListener('click', closeSettings);
+  $('set-done').addEventListener('click', closeSettings);
+  // a press outside the card closes it - not a slider dragged off the edge of it and let go
+  let downOutside = false;
+  $('settings').addEventListener('pointerdown', (e) => { downOutside = e.target === $('settings'); });
+  $('settings').addEventListener('click', (e) => { if (e.target === $('settings') && downOutside) closeSettings(); downOutside = false; });
+  $('set-tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) settingsTab(b.dataset.tab); });
+  $('set-tabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const tabs = [...$('set-tabs').querySelectorAll('[data-tab]')].filter((b) => !b.hidden);
+    const i = tabs.findIndex((b) => b.dataset.tab === SetUI.tab), next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+    settingsTab(next.dataset.tab); next.focus(); e.preventDefault();
+  });
+  // the public rooms
+  $('btn-browse').addEventListener('click', () => { saveSettings(); Rooms.msg = null; Lobby.view = 'browse'; renderLobbyUI(); });
+  $('btn-browse-back').addEventListener('click', () => { Lobby.view = 'main'; renderLobbyUI(); });
+  $('btn-refresh').addEventListener('click', roomListRefresh);
+  $('btn-browse-host').addEventListener('click', () => { Settings.roomVis = 'public'; saveSettings(); goOnline(randomCode(5), true); });
+  $('rooms').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-code]');
+    if (!b || b.disabled || Game.menuBusy) return;
+    goFullscreen(false);
+    goOnline(b.dataset.code, false, true);
+  });
+  $('room-name').addEventListener('input', (e) => { Settings.roomName = cleanTitle(e.target.value); saveSettings(); Rooms.tickAt = 0; });
+  $('room-name').addEventListener('change', (e) => { e.target.value = Settings.roomName; });
   $('btn-nettest').addEventListener('click', async () => {
     const b = $('btn-nettest'), o = $('nettest-out');
     if (b.disabled) return;
@@ -407,7 +513,7 @@ function wireMenus() {
   $('btn-join').addEventListener('click', () => { goFullscreen(false); join(); });
   $('join-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); });
   $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
-  $('name-input').addEventListener('change', saveSettings);
+  $('name-input').addEventListener('change', () => { saveSettings(); renderLobbyUI(); });
   $('sens').addEventListener('input', (e) => { Settings.sens = +e.target.value; saveSettings(); });
   $('vol').addEventListener('input', (e) => { Settings.vol = +e.target.value; Sound.setMaster(Settings.vol); saveSettings(); });
   $('bright').addEventListener('input', (e) => { Settings.bright = +e.target.value; if (R) R.exposure = Settings.bright; saveSettings(); });
@@ -438,6 +544,7 @@ function wireMenus() {
 }
 async function backToLobby() {
   resetEnding();
+  Lobby.view = 'main';
   Game.campLv = 'l1'; Game.endNext = null;
   if (Net.mode !== 'solo') { await netLeave(); netNote(readyNote(), !NetCaps.online); }
   Game.g = null; Game.round = -1; Game.me = null;
@@ -628,7 +735,8 @@ function tickFrame(now) {
   let ca = 0, crd = 99;
   switch (Game.mode) {
     case 'coldopen': updateColdOpen(dt, t); ca = 7; break;
-    case 'lobby': updateLobbyScene(dt, t); ca = 0; if ((Game.lobbyT = (Game.lobbyT || 0) - dt) <= 0) { Game.lobbyT = 0.4; renderLobbyUI(); } break;
+    // the menu keeps up with the room in real time, however slowly the scene behind it draws
+    case 'lobby': updateLobbyScene(dt, t); ca = 0; if (now - (Game.lobbyAt || 0) > 400) { Game.lobbyAt = now; renderLobbyUI(); } break;
     case 'intro': updateIntro(dt, t); processGameEvents(); ca = 0; break;
     case 'play': {
       if (!Game.paused) updateLocalPlayer(dt, t);
@@ -658,8 +766,9 @@ function tickFrame(now) {
   if (Game.me && Game.g && (Game.mode === 'intro' || Game.mode === 'play' || Game.mode === 'end')) {
     const st = myStateObject();
     if (Net.mode === 'solo') Net.myState = st; else netPublish(st);
-  } else if (Net.mode !== 'solo') netPublish({ v: 1, n: Settings.name, c: Settings.color, cr: Net.creator ? 1 : 0, mic: Sound.hasMic ? 1 : 0, mp: Settings.map });
+  } else if (Net.mode !== 'solo') netPublish(lobbyState());
   netUpdateVoice();
+  roomsTick(); roomListTick();
   if (Game.mode !== 'play') updateLairs(0);
   updateWorld(dt, t, Game.g, ca);
   // sound of the creature and the chase

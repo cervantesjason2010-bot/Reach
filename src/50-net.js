@@ -6,6 +6,8 @@ const PEERJS_URLS = [
   'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
 ];
+// the matchmaking server: PeerJS's own (these are its defaults, written out for the room list, which talks to it directly)
+const PEER_SERVER = { host: '0.peerjs.com', port: 443, path: '/', key: 'peerjs', secure: true };
 const NET_HOST_GONE_MS = 20000;   // nothing from the host for this long: it has gone
 const NET_PEER_GONE_MS = 15000;   // nothing from a player for this long: take them off the roster until they're back
 const PRESENCE_MAX = 4000;        // a room presence is capped at 4 KiB of JSON (UTF-8); keep a margin
@@ -122,7 +124,8 @@ function peerOptions(extra) {
     { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
   ];
   if (extra) iceServers.push(extra);
-  return { debug: 0, config: { iceServers, iceTransportPolicy: relay ? 'relay' : 'all', sdpSemantics: 'unified-plan' } };
+  return { host: PEER_SERVER.host, port: PEER_SERVER.port, path: PEER_SERVER.path, key: PEER_SERVER.key, secure: PEER_SERVER.secure, debug: 0,
+    config: { iceServers, iceTransportPolicy: relay ? 'relay' : 'all', sdpSemantics: 'unified-plan' } };
 }
 // a player's connection closed: off the roster (unless they have already come back on a new one)
 function dropPeer(id, conn) {
@@ -196,6 +199,7 @@ async function connectPeers(code, creator) {
 async function netLeave() {
   for (const u of Net.unsub) { try { u(); } catch (e) { /* gone */ } }
   Net.unsub = [];
+  roomsLeft();
   const mode = Net.mode, r = Net.r, scoped = Net.scoped, peer = Net.peer;
   Net.mode = 'solo';
   if (mode === 'claude' && r) {
@@ -336,13 +340,15 @@ function netPublish(state, force) {
     if (!Net.r) return;
     let out = encodeKeys(Net.scoped ? Object.assign({}, state, { rm: Net.code }) : state);
     let text = JSON.stringify(out);
+    // in a shared lobby the presence also carries the room's entry in the public list (see roomsTick)
+    const max = PRESENCE_MAX - (Net.scoped ? Rooms.bytes : 0);
     // over the room's size limit: the oldest events go first (they've been seen), then the kill's drag path
-    if (utf8Len(text) > PRESENCE_MAX && out.g) {
+    if (utf8Len(text) > max && out.g) {
       out = Object.assign({}, out, { g: Object.assign({}, out.g, { ev: (out.g.ev || []).slice(-3) }) });
       text = JSON.stringify(out);
-      if (utf8Len(text) > PRESENCE_MAX && out.g.kl) { out.g.kl = Object.assign({}, out.g.kl, { p: [] }); text = JSON.stringify(out); }
+      if (utf8Len(text) > max && out.g.kl) { out.g.kl = Object.assign({}, out.g.kl, { p: [] }); text = JSON.stringify(out); }
     }
-    if (utf8Len(text) > PRESENCE_MAX) { Net.lastError = 'too_big'; return; }
+    if (utf8Len(text) > max) { Net.lastError = 'too_big'; return; }
     if (text === Net.lastPayload) return;     // unchanged: the room keeps it alive by itself
     // the room merges each update into what it has: anything not sent this time has to be cleared by name
     const patch = Object.assign({}, out);

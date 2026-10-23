@@ -3,8 +3,9 @@ REACH, a Jason Production
 
 This folder is the standalone version of REACH. It runs in any modern
 browser (Chrome, Edge or Firefox) with an internet connection.
-It is graphics-heavy. If it runs slowly, open Settings in the main menu
-and lower Graphics or Render distance. Headphones make it much scarier.
+It is graphics-heavy. If it runs slowly, open Settings (top right of the
+main menu, or Esc > Settings during a game) and lower Graphics or Render
+distance. Headphones make it much scarier.
 
 PLAY SOLO
   Double-click index.html.
@@ -35,20 +36,23 @@ UPDATING A COPY YOU ALREADY PUT ON GITHUB PAGES
 LEVELS
   Level 1, Reach - B4: ten areas of a dead facility, and something tall
   that hunts by sound.
-  Level 2, Seize - B5: coming soon. Have the early access code? Click the
-  Level 2 card in the menu and enter it to play it now. Only the host needs
-  the code: everyone in their room goes down with them.
+  Level 2, Seize - B5, and Level 3, Breach - A1: early access. Have the
+  code? Click either card in the menu and enter it to play them now. Only
+  the host needs the code: everyone in their room goes down with them.
 
 IN THE GAME
-  One player presses "Host co-op" and sends the 5-letter room code (or the
-  invite link) to friends, who press "Join". Everyone who wants voice chat
-  turns it on in Settings. Teammates hear you when you are near them,
-  and so does the creature - but not if you whisper (Whisper-safe mic).
-  If a friend can't connect, everyone set Settings > Connection to Relay.
-  School, college and work Wi-Fi often block direct connections between
-  players: use Relay there. Settings > Check my connection tells you what
-  your network lets through. If it still won't connect, try a phone
-  hotspot.
+  One player presses "Host co-op", names the room, and sends the 5-letter
+  room code (or the invite link) to friends, who type it and press "Join".
+  Set the room to Public and anyone can find it under "Find a room" and
+  join from the list; Private rooms are for whoever has the code.
+  Everyone who wants voice chat turns it on in Settings > Online.
+  Teammates hear you when you are near them, and so does the creature -
+  but not if you whisper (Whisper-safe mic).
+  If a friend can't connect, everyone set Settings > Online > Connection
+  to Relay. School, college and work Wi-Fi often block direct connections
+  between players: use Relay there. Settings > Online > Check my
+  connection tells you what your network lets through. If it still won't
+  connect, try a phone hotspot.
 
 CONTROLS
   WASD move, Shift run, C crouch (and crawl under low racks), F flashlight,

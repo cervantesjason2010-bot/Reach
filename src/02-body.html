@@ -24,100 +24,80 @@
 
 <section id="lobby" hidden>
   <div class="side">
-    <div>
+    <header class="brand">
       <h1 class="logo">REACH</h1>
       <p class="tag">One dead facility, three floors of it. Something different hunts on every one.</p>
-    </div>
+    </header>
 
-    <div id="menu-main" class="stack">
-      <div class="field"><label class="label" for="name-input">Your name</label><input id="name-input" type="text" maxlength="14" autocomplete="off" spellcheck="false"></div>
-      <div class="field"><span class="label" id="suit-label">Suit colour</span>
-        <div id="swatches" class="swatches" role="radiogroup" aria-labelledby="suit-label"></div>
+    <div id="menu-main" class="menu">
+      <div class="idrow">
+        <div class="field"><label class="label" for="name-input">Your name</label><input id="name-input" type="text" maxlength="14" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><span class="label" id="suit-label">Suit colour</span>
+          <div id="swatches" class="swatches" role="radiogroup" aria-labelledby="suit-label"></div>
+        </div>
       </div>
       <div class="field"><span class="label" id="map-label">Map</span>
         <div id="maps" class="maps" role="radiogroup" aria-labelledby="map-label">
-          <button class="map" data-map="l1" type="button" role="radio"><span class="mn">Level 1</span><b>Reach - B4</b><span class="md">Ten areas of a dead facility. Something tall that hunts by sound.</span></button>
-          <button class="map locked" data-map="l2" type="button" role="radio"><span class="mn">Level 2 · Coming soon</span><b>Seize - B5</b><span class="md">No lights. Something huge that hunts by sight.</span><span class="ea">Have an early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> to enter it.</span></button>
-          <button class="map locked" data-map="l3" type="button" role="radio"><span class="mn">Level 3 · Coming soon</span><b>Breach - A1</b><span class="md">The bunker under the surface. Something that only sees you move.</span><span class="ea">Have an early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> to enter it.</span></button>
-          <button class="map" data-map="camp" type="button" role="radio"><span class="mn">Campaign</span><b>All the Way Down</b><span class="md">Every level in order, one run. More levels are coming.</span></button>
+          <button class="map" data-map="l1" type="button" role="radio"><span class="mn">Level 1</span><b>Reach - B4</b><span class="md">A dead facility. Something tall hunts by sound.</span></button>
+          <button class="map locked" data-map="l2" type="button" role="radio"><span class="mn">Level 2 · Coming soon</span><b>Seize - B5</b><span class="md">No lights. Something huge hunts by sight.</span><span class="ea">Early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> here.</span></button>
+          <button class="map locked" data-map="l3" type="button" role="radio"><span class="mn">Level 3 · Coming soon</span><b>Breach - A1</b><span class="md">The bunker under the surface. It sees you move.</span><span class="ea">Early access code? <span class="only-keys">Click</span><span class="only-touch">Tap</span> here.</span></button>
+          <button class="map" data-map="camp" type="button" role="radio"><span class="mn">Campaign</span><b>All the Way Down</b><span class="md">Every level in order, in one run.</span></button>
         </div>
       </div>
-      <div class="field"><span class="label" id="ctl-label">Controls</span>
-        <div id="ctlmode" class="segs" role="radiogroup" aria-labelledby="ctl-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="mobile">Mobile</button><button type="button" data-v="pc">PC</button></div>
-        <p id="ctl-note" class="note"></p>
+      <div class="play">
+        <button id="btn-solo" class="btn big" type="button">Play solo <span class="k">1 player</span></button>
+        <div class="row pair">
+          <button id="btn-host" class="btn ghost" type="button">Host co-op <span class="k">2–4</span></button>
+          <button id="btn-browse" class="btn ghost" type="button">Find a room <span class="k">Public</span></button>
+        </div>
+        <div class="joinrow">
+          <input id="join-code" type="text" maxlength="5" placeholder="Room code" aria-label="Room code" autocomplete="off" spellcheck="false">
+          <button id="btn-join" class="btn ghost" type="button">Join</button>
+        </div>
+        <p id="net-note" class="note">Checking co-op…</p>
       </div>
-      <button id="btn-solo" class="btn" type="button">Play solo <span class="k">1 player</span></button>
-      <button id="btn-host" class="btn ghost" type="button">Host co-op <span class="k">2–4 players</span></button>
-      <div class="row">
-        <div class="field"><label class="label" for="join-code">Room code</label><input id="join-code" type="text" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false"></div>
-        <button id="btn-join" class="btn ghost" type="button" style="align-self:end">Join</button>
-      </div>
-      <p id="net-note" class="note">Checking co-op…</p>
     </div>
 
-    <div id="menu-room" class="stack" hidden>
-      <span class="label">Room code</span>
-      <div id="room-code" class="code-big">-----</div>
+    <div id="menu-browse" class="menu" hidden>
+      <div class="menu-head"><h2 class="menu-title">Public rooms</h2><button id="btn-refresh" class="linkbtn" type="button">Refresh</button></div>
+      <ul id="rooms" class="rooms" aria-live="polite"></ul>
+      <p id="browse-note" class="note">Looking for rooms…</p>
+      <div class="row pair">
+        <button id="btn-browse-host" class="btn" type="button">Host a room</button>
+        <button id="btn-browse-back" class="btn ghost" type="button">Back</button>
+      </div>
+    </div>
+
+    <div id="menu-room" class="menu" hidden>
+      <div id="room-name-field" class="field"><label class="label" for="room-name">Room name</label><input id="room-name" type="text" maxlength="24" autocomplete="off" spellcheck="false"></div>
+      <div id="room-title-box" class="field" hidden><span class="label">Room</span><b id="room-title" class="room-title"></b></div>
+      <div id="room-vis-field" class="field"><span class="label" id="vis-label">Who can find it</span>
+        <div id="room-vis" class="segs" role="radiogroup" aria-labelledby="vis-label"><button type="button" data-v="private">Private</button><button type="button" data-v="public">Public</button></div>
+        <p id="vis-note" class="note"></p>
+      </div>
+      <div class="codebox">
+        <span class="label">Room code</span>
+        <div id="room-code" class="code-big">-----</div>
+      </div>
       <div class="invite"><code id="invite-link"></code><button id="btn-copy" class="btn ghost" type="button">Copy</button></div>
       <p id="invite-note" class="note"></p>
-      <span class="label">Your team</span>
-      <ul id="roster" class="roster"></ul>
+      <div class="field"><span class="label">Your team</span>
+        <ul id="roster" class="roster"></ul>
+      </div>
       <p id="room-map" class="note"></p>
       <p id="room-status" class="note">Waiting for friends…</p>
-      <div class="row">
+      <div class="row pair">
         <button id="btn-start" class="btn" type="button">Start the descent</button>
         <button id="btn-leave" class="btn ghost" type="button">Leave</button>
       </div>
     </div>
-
-    <details class="settings">
-      <summary class="label">Settings and controls</summary>
-      <div class="stack" style="margin-top:14px">
-        <div id="mic-row" class="row" hidden>
-          <button id="btn-mic" class="btn ghost" type="button">Turn on voice chat</button>
-          <p class="note">Your teammates hear you nearby. So does it.</p>
-        </div>
-        <div class="slider"><label class="label" for="sens"><span class="only-keys">Mouse sensitivity</span><span class="only-touch">Look sensitivity</span></label><input id="sens" type="range" min="0.4" max="2.4" step="0.05" value="1"></div>
-        <div class="slider"><label class="label" for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.9"></div>
-        <div class="slider"><label class="label" for="bright">Brightness</label><input id="bright" type="range" min="0.7" max="1.9" step="0.05" value="1.15"></div>
-        <div class="field"><span class="label" id="ui-label">HUD size</span>
-          <div id="uisize" class="segs" role="radiogroup" aria-labelledby="ui-label"><button type="button" data-v="0.7">Small</button><button type="button" data-v="0.85">Medium</button><button type="button" data-v="1">Large</button></div>
-        </div>
-        <div class="field"><span class="label" id="gfx-label">Graphics</span>
-          <div id="gfx" class="segs" role="radiogroup" aria-labelledby="gfx-label"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button><button type="button" data-v="ultra">Ultra</button></div>
-        </div>
-        <div class="field"><span class="label" id="rd-label">Render distance</span>
-          <div id="rdist" class="segs" role="radiogroup" aria-labelledby="rd-label"><button type="button" data-v="30">Near</button><button type="button" data-v="50">Medium</button><button type="button" data-v="80">Far</button><button type="button" data-v="140">Max</button></div>
-          <p class="note">How far out the world is drawn. Nearer runs faster.</p>
-        </div>
-        <div class="field"><span class="label" id="net-label">Connection</span>
-          <div id="netmode" class="segs" role="radiogroup" aria-labelledby="net-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="relay">Relay</button></div>
-          <p class="note">If friends can't connect, everyone switch to Relay. It routes through a server: steadier, a little more lag. School and college Wi-Fi usually need it.</p>
-          <button id="btn-nettest" class="btn ghost" type="button">Check my connection <span class="k">10 s</span></button>
-          <p id="nettest-out" class="note" hidden></p>
-        </div>
-        <label class="check"><input id="whisper" type="checkbox" checked><span>Whisper-safe mic: it hears talking and yelling, never whispers</span></label>
-        <div class="controls only-touch">
-          <span><kbd>Left</kbd>Drag to move</span><span><kbd>Right</kbd>Drag to look</span>
-          <span><kbd>Use</kbd>Tap or hold</span><span><kbd>Run</kbd>Tap, or push the stick far up</span>
-          <span><kbd>Light</kbd>Torch on / off</span><span><kbd>Crouch</kbd>Sneak</span>
-          <span><kbd>Slots</kbd>Tap an item</span><span><kbd>❚❚</kbd>Pause</span>
-        </div>
-        <div class="controls only-keys">
-          <span><kbd>WASD</kbd>Move</span><span><kbd>Shift</kbd>Run</span>
-          <span><kbd>C</kbd>Crouch</span><span><kbd>F</kbd>Flashlight</span>
-          <span><kbd>E</kbd>Use / hold</span><span><kbd>G</kbd>Whistle</span>
-          <span><kbd>1–5</kbd>Items</span><span><kbd>Q</kbd>Drop item</span>
-          <span><kbd>M</kbd>Mute mic</span><span><kbd>Esc</kbd>Pause</span>
-        </div>
-      </div>
-    </details>
 
     <div class="foot">
       <span class="who">A Jason Production</span>
       <span class="role">Lead Developer · Jason</span>
     </div>
   </div>
+  <button id="btn-settings" class="gearbtn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3L5.5 5.5"/><circle cx="12" cy="12" r="6.4"/></svg><span>Settings</span></button>
 </section>
 
 <div id="hud" hidden>
@@ -167,8 +147,71 @@
     <h2>Paused</h2>
     <p id="pause-note" class="note">The game keeps running for your team.</p>
     <button id="btn-resume" class="btn" type="button">Resume</button>
+    <button id="btn-pause-settings" class="btn ghost" type="button">Settings</button>
     <button id="btn-full" class="btn ghost" type="button" hidden>Full screen</button>
     <button id="btn-quit" class="btn ghost" type="button">Leave to the lobby</button>
+  </div>
+</div>
+<div id="settings" class="overlay" hidden>
+  <div class="set-card" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <div class="set-head"><h2 id="set-title">Settings</h2><button id="set-close" class="set-x" type="button" aria-label="Close settings">×</button></div>
+    <div id="set-tabs" class="set-tabs" role="tablist">
+      <button type="button" role="tab" data-tab="game">Game</button><button type="button" role="tab" data-tab="video">Graphics</button><button id="tab-online" type="button" role="tab" data-tab="online">Online</button><button type="button" role="tab" data-tab="keys"><span class="only-keys">Keys</span><span class="only-touch">Buttons</span></button>
+    </div>
+    <div class="set-body">
+      <div class="set-pane" data-pane="game" role="tabpanel">
+        <div class="field"><span class="label" id="ctl-label">Controls</span>
+          <div id="ctlmode" class="segs" role="radiogroup" aria-labelledby="ctl-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="mobile">Mobile</button><button type="button" data-v="pc">PC</button></div>
+          <p id="ctl-note" class="note"></p>
+        </div>
+        <div class="slider"><label class="label" for="sens"><span class="only-keys">Mouse sensitivity</span><span class="only-touch">Look sensitivity</span></label><input id="sens" type="range" min="0.4" max="2.4" step="0.05" value="1"></div>
+        <div class="slider"><label class="label" for="vol">Volume</label><input id="vol" type="range" min="0" max="1" step="0.05" value="0.9"></div>
+        <div class="slider"><label class="label" for="bright">Brightness</label><input id="bright" type="range" min="0.7" max="1.9" step="0.05" value="1.15"></div>
+        <div class="field"><span class="label" id="ui-label">HUD size</span>
+          <div id="uisize" class="segs" role="radiogroup" aria-labelledby="ui-label"><button type="button" data-v="0.7">Small</button><button type="button" data-v="0.85">Medium</button><button type="button" data-v="1">Large</button></div>
+        </div>
+      </div>
+      <div class="set-pane" data-pane="video" role="tabpanel" hidden>
+        <div class="field"><span class="label" id="gfx-label">Graphics</span>
+          <div id="gfx" class="segs" role="radiogroup" aria-labelledby="gfx-label"><button type="button" data-v="low">Low</button><button type="button" data-v="med">Medium</button><button type="button" data-v="high">High</button><button type="button" data-v="ultra">Ultra</button></div>
+          <p class="note">Lower runs smoother on older computers and phones.</p>
+        </div>
+        <div class="field"><span class="label" id="rd-label">Render distance</span>
+          <div id="rdist" class="segs" role="radiogroup" aria-labelledby="rd-label"><button type="button" data-v="30">Near</button><button type="button" data-v="50">Medium</button><button type="button" data-v="80">Far</button><button type="button" data-v="140">Max</button></div>
+          <p class="note">How far out the world is drawn. Nearer runs faster.</p>
+        </div>
+      </div>
+      <div class="set-pane" data-pane="online" role="tabpanel" hidden>
+        <div id="mic-row" class="field" hidden>
+          <span class="label">Voice chat</span>
+          <button id="btn-mic" class="btn ghost" type="button">Turn on voice chat</button>
+          <p class="note">Your teammates hear you nearby. So does it.</p>
+        </div>
+        <label class="check"><input id="whisper" type="checkbox" checked><span>Whisper-safe mic: it hears talking and yelling, never whispers</span></label>
+        <div class="field"><span class="label" id="net-label">Connection</span>
+          <div id="netmode" class="segs" role="radiogroup" aria-labelledby="net-label"><button type="button" data-v="auto">Auto</button><button type="button" data-v="relay">Relay</button></div>
+          <p class="note">If friends can't connect, everyone switch to Relay. It routes through a server: steadier, a little more lag. School and college Wi-Fi usually need it. It counts from the next room you host or join.</p>
+          <button id="btn-nettest" class="btn ghost" type="button">Check my connection <span class="k">10 s</span></button>
+          <p id="nettest-out" class="note" hidden></p>
+        </div>
+      </div>
+      <div class="set-pane" data-pane="keys" role="tabpanel" hidden>
+        <div class="controls only-touch">
+          <span><kbd>Left</kbd>Drag to move</span><span><kbd>Right</kbd>Drag to look</span>
+          <span><kbd>Use</kbd>Tap or hold</span><span><kbd>Run</kbd>Tap, or push the stick far up</span>
+          <span><kbd>Light</kbd>Torch on / off</span><span><kbd>Crouch</kbd>Sneak</span>
+          <span><kbd>Slots</kbd>Tap an item</span><span><kbd>❚❚</kbd>Pause</span>
+        </div>
+        <div class="controls only-keys">
+          <span><kbd>WASD</kbd>Move</span><span><kbd>Shift</kbd>Run</span>
+          <span><kbd>C</kbd>Crouch</span><span><kbd>F</kbd>Flashlight</span>
+          <span><kbd>E</kbd>Use / hold</span><span><kbd>G</kbd>Whistle</span>
+          <span><kbd>1–5</kbd>Items</span><span><kbd>Q</kbd>Drop item</span>
+          <span><kbd>M</kbd>Mute mic</span><span><kbd>Esc</kbd>Pause</span>
+        </div>
+      </div>
+    </div>
+    <div class="set-foot"><span class="note">Changes save by themselves.</span><button id="set-done" class="btn" type="button">Done</button></div>
   </div>
 </div>
 <div id="rotate" class="overlay" hidden><div class="box"><svg class="rot-ico" viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="8" width="20" height="36" rx="3"/><path d="M14 50a22 22 0 0 0 34 6M44 56l4 0 0-4"/></svg><h2>Turn it sideways</h2><p class="note">REACH plays best with your phone held sideways: move with your left thumb, look with your right.</p><button id="btn-rotate-ok" class="btn ghost" type="button">Play like this anyway</button></div></div>
