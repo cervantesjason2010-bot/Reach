@@ -1,6 +1,6 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '' };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '', god: 'off', godOk: false };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -26,6 +26,7 @@ function loadSettings() {
   // the rooms you host: private (code only) unless you say otherwise, and what you called them
   Settings.roomVis = saved.roomVis === 'public' ? 'public' : 'private';
   Settings.roomName = cleanTitle(saved.roomName);
+  Settings.godOk = saved.godOk === true; Settings.god = Settings.godOk && saved.god === 'on' ? 'on' : 'off';
   applyUiSize();
   applyControls();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
@@ -37,7 +38,7 @@ function saveSettings() {
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
       gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls,
-      roomVis: Settings.roomVis, roomName: Settings.roomName }));
+      roomVis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk }));
   } catch (e) { /* storage blocked */ }
 }
 
@@ -102,6 +103,7 @@ function setMode(m) {
   $('lobby').hidden = m !== 'lobby';
   $('hud').hidden = m !== 'play';
   $('pause').hidden = true;
+  if (m !== 'play') hideDeath();
   if (m !== 'end') $('end').hidden = true;
   $('skip').hidden = !(m === 'coldopen' || (m === 'intro' && netIsHost()));
   if (m !== 'play' && document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) { /* fine */ } }
@@ -509,6 +511,19 @@ function wireMenus() {
   wireSegs('rdist', 'rdist', () => applyRenderDistance(), Number);
   wireSegs('netmode', 'net', null);
   wireSegs('ctlmode', 'controls', applyControls);
+  // god mode: behind a password; once it is in, a plain On / Off
+  const renderGod = () => { $('god-lock').hidden = Settings.godOk; $('godmode').hidden = !Settings.godOk; setText($('god-note'), Settings.godOk ? 'On: the monsters can\'t take you.' : 'The monsters can\'t take you. Needs the password.'); };
+  wireSegs('godmode', 'god', () => showToast(Settings.god === 'on' ? 'God mode on' : 'God mode off', '', 1400));
+  const unlockGod = () => {
+    if ($('god-code').value.trim() === '2024') { Settings.godOk = true; Settings.god = 'on'; saveSettings(); renderSegs(); renderGod(); showToast('God mode on', '', 1400); }
+    else { $('god-note').classList.add('warn'); setText($('god-note'), 'Wrong password.'); setTimeout(() => $('god-note').classList.remove('warn'), 1500); }
+    $('god-code').value = '';
+  };
+  $('god-unlock').addEventListener('click', unlockGod);
+  $('god-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockGod(); });
+  renderGod();
+  // the "Taken" card goes with a click or a tap
+  $('death').addEventListener('click', hideDeath);
   wireSegs('room-vis', 'roomVis', () => { Rooms.tickAt = 0; renderLobbyUI(); }, (v) => (v === 'public' ? 'public' : 'private'));
   // settings: the gear in the menu, Settings on the pause card (inside Claude there is nothing for the Online tab)
   $('tab-online').hidden = IN_CLAUDE;

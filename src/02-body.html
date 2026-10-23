@@ -141,7 +141,7 @@
 </div>
 <div id="note" class="overlay" hidden><div class="paper"><span id="note-area"></span><p id="note-text"></p><span class="close"><span class="only-keys">Click or press E to put it down</span><span class="only-touch">Tap to put it down</span></span></div></div>
 <div id="scare" class="overlay" hidden><canvas id="scare-canvas" width="300" height="300"></canvas></div>
-<div id="death" class="overlay" hidden><div class="box"><h2>Taken</h2><p id="death-text" class="note"></p></div></div>
+<div id="death" class="overlay" hidden><div class="box"><h2>Taken</h2><p id="death-text" class="note"></p><p class="note"><span class="only-keys">Click</span><span class="only-touch">Tap</span> to close</p></div></div>
 <div id="pause" class="overlay" hidden>
   <div class="box">
     <h2>Paused</h2>
@@ -169,6 +169,11 @@
         <div class="slider"><label class="label" for="bright">Brightness</label><input id="bright" type="range" min="0.7" max="1.9" step="0.05" value="1.15"></div>
         <div class="field"><span class="label" id="ui-label">HUD size</span>
           <div id="uisize" class="segs" role="radiogroup" aria-labelledby="ui-label"><button type="button" data-v="0.7">Small</button><button type="button" data-v="0.85">Medium</button><button type="button" data-v="1">Large</button></div>
+        </div>
+        <div class="field"><span class="label" id="god-label">God mode</span>
+          <div id="god-lock" class="joinrow"><input id="god-code" type="password" inputmode="numeric" maxlength="8" placeholder="Password" aria-label="God mode password" autocomplete="off"><button id="god-unlock" class="btn ghost" type="button">Unlock</button></div>
+          <div id="godmode" class="segs" role="radiogroup" aria-labelledby="god-label" hidden><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div>
+          <p id="god-note" class="note">The monsters can't take you. Needs the password.</p>
         </div>
       </div>
       <div class="set-pane" data-pane="video" role="tabpanel" hidden>

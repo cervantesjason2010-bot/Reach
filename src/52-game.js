@@ -93,9 +93,11 @@ function hostTick(dt) {
   processHolds(g, players, dt);
   tickLevers(g);
   updateLift(g, living, dt);
-  if (g.lv === 'l2') chudTick(g, living, players, dt, open);
-  else if (g.lv === 'l3') paleTick(g, living, players, dt, open);
-  else creatureTick(g, living, dt, open);
+  // god mode: the monsters don't know you are there
+  const prey = living.filter((p) => !p.gm);
+  if (g.lv === 'l2') chudTick(g, prey, players, dt, open);
+  else if (g.lv === 'l3') paleTick(g, prey, players, dt, open);
+  else creatureTick(g, prey, dt, open);
 }
 
 function gatherPlayers(g) {
@@ -103,7 +105,7 @@ function gatherPlayers(g) {
   for (const p of netPeers()) {
     const s = p.s;
     if (!s || typeof s.x !== 'number' || s.rn !== g.rn) continue;
-    out.push({ id: p.id, me: p.me, x: s.x, z: s.z, yaw: +s.y || 0, pitch: +s.p || 0, run: s.run === 1, cro: s.cro === 1, fl: s.fl !== 0, vl: +s.vl || 0, a: s.a, h: s.h || '', mv: +s.mv || 0, name: s.n });
+    out.push({ id: p.id, me: p.me, gm: s.gm === 1, x: s.x, z: s.z, yaw: +s.y || 0, pitch: +s.p || 0, run: s.run === 1, cro: s.cro === 1, fl: s.fl !== 0, vl: +s.vl || 0, a: s.a, h: s.h || '', mv: +s.mv || 0, name: s.n });
   }
   return out;
 }

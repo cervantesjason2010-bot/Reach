@@ -44,7 +44,7 @@ function jumpScare() {
 function showDeath(delay = 1300) {
   const solo = Net.mode === 'solo' || netPeers().length < 2;
   setText($('death-text'), solo ? 'It has you. You wake up in the last shelter you reached.' : 'Your team can bring you back. Get one of them to a shelter.');
-  setTimeout(() => { if (Game.me && Game.me.dead) $('death').hidden = false; }, delay);
+  setTimeout(() => { if (Game.me && Game.me.dead && Game.mode === 'play') $('death').hidden = false; }, delay);
 }
 function hideDeath() { $('death').hidden = true; }
 

@@ -252,6 +252,7 @@ body.cinema .bar { height: 11vh; }
 #scare.go canvas { animation: lunge 1.3s ease-out both; }
 @keyframes lunge { 0% { transform: scale(0.6); opacity: 0; } 6% { transform: scale(1.25) rotate(-3deg); opacity: 1; } 20% { transform: scale(1.4) rotate(2deg); } 70% { opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
 #death h2 { color: var(--blood); }
+#death { cursor: pointer; }
 /* ---- the keypad on a door ---- */
 #keypad { background: rgba(0, 0, 0, 0.35); pointer-events: auto; }
 #keypad .kp { width: min(300px, 86vw); padding: 20px 20px 16px; background: linear-gradient(#1c1e1c, #121312); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.06); display: grid; gap: 12px; justify-items: stretch; text-align: center; }
@@ -380,7 +381,6 @@ body.touch #inv-name { position: absolute; left: 50%; bottom: calc(100% + 10px);
 body.touch #hud #stamina { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); width: 150px; }
 body.touch #hud #prompt { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 body.touch #prompt-key { width: auto; padding: 0 8px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
-body.touch #death { pointer-events: none; }
 body.touch #skip { padding: 12px 20px; font-size: 12px; right: calc(16px + env(safe-area-inset-right, 0px)); }
 body.touch .field input { font-size: 16px; }
 body.touch .segs button { padding: 12px 4px; }

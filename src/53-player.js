@@ -92,6 +92,7 @@ function queueAction(kind, id) {
 function myStateObject() {
   const me = Game.me, g = Game.g;
   const s = { v: 1, n: Settings.name, c: Settings.color, cr: Net.creator || Net.mode === 'solo' ? 1 : 0, mic: Sound.hasMic ? 1 : 0, rn: g ? g.rn : 0 };
+  if (Settings.godOk && Settings.god === 'on') s.gm = 1;
   if (me && g) {
     Object.assign(s, { x: r2(me.x), z: r2(me.z), y: r2(me.yaw), p: r2(me.pitch), run: me.sprinting ? 1 : 0, cro: me.crouching ? 1 : 0,
       fl: me.fl ? 1 : 0, vl: r2(me.vl), mv: r2(me.speed), h: me.holding, d: me.dead ? 1 : 0, a: Game.actQueue[0] || null });

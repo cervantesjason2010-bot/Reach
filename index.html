@@ -253,6 +253,7 @@ body.cinema .bar { height: 11vh; }
 #scare.go canvas { animation: lunge 1.3s ease-out both; }
 @keyframes lunge { 0% { transform: scale(0.6); opacity: 0; } 6% { transform: scale(1.25) rotate(-3deg); opacity: 1; } 20% { transform: scale(1.4) rotate(2deg); } 70% { opacity: 1; } 100% { transform: scale(1.6); opacity: 0; } }
 #death h2 { color: var(--blood); }
+#death { cursor: pointer; }
 /* ---- the keypad on a door ---- */
 #keypad { background: rgba(0, 0, 0, 0.35); pointer-events: auto; }
 #keypad .kp { width: min(300px, 86vw); padding: 20px 20px 16px; background: linear-gradient(#1c1e1c, #121312); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.06); display: grid; gap: 12px; justify-items: stretch; text-align: center; }
@@ -381,7 +382,6 @@ body.touch #inv-name { position: absolute; left: 50%; bottom: calc(100% + 10px);
 body.touch #hud #stamina { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); width: 150px; }
 body.touch #hud #prompt { bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 body.touch #prompt-key { width: auto; padding: 0 8px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
-body.touch #death { pointer-events: none; }
 body.touch #skip { padding: 12px 20px; font-size: 12px; right: calc(16px + env(safe-area-inset-right, 0px)); }
 body.touch .field input { font-size: 16px; }
 body.touch .segs button { padding: 12px 4px; }
@@ -601,7 +601,7 @@ body.touch .kp-keys button { padding: 13px 0; }
 </div>
 <div id="note" class="overlay" hidden><div class="paper"><span id="note-area"></span><p id="note-text"></p><span class="close"><span class="only-keys">Click or press E to put it down</span><span class="only-touch">Tap to put it down</span></span></div></div>
 <div id="scare" class="overlay" hidden><canvas id="scare-canvas" width="300" height="300"></canvas></div>
-<div id="death" class="overlay" hidden><div class="box"><h2>Taken</h2><p id="death-text" class="note"></p></div></div>
+<div id="death" class="overlay" hidden><div class="box"><h2>Taken</h2><p id="death-text" class="note"></p><p class="note"><span class="only-keys">Click</span><span class="only-touch">Tap</span> to close</p></div></div>
 <div id="pause" class="overlay" hidden>
   <div class="box">
     <h2>Paused</h2>
@@ -629,6 +629,11 @@ body.touch .kp-keys button { padding: 13px 0; }
         <div class="slider"><label class="label" for="bright">Brightness</label><input id="bright" type="range" min="0.7" max="1.9" step="0.05" value="1.15"></div>
         <div class="field"><span class="label" id="ui-label">HUD size</span>
           <div id="uisize" class="segs" role="radiogroup" aria-labelledby="ui-label"><button type="button" data-v="0.7">Small</button><button type="button" data-v="0.85">Medium</button><button type="button" data-v="1">Large</button></div>
+        </div>
+        <div class="field"><span class="label" id="god-label">God mode</span>
+          <div id="god-lock" class="joinrow"><input id="god-code" type="password" inputmode="numeric" maxlength="8" placeholder="Password" aria-label="God mode password" autocomplete="off"><button id="god-unlock" class="btn ghost" type="button">Unlock</button></div>
+          <div id="godmode" class="segs" role="radiogroup" aria-labelledby="god-label" hidden><button type="button" data-v="off">Off</button><button type="button" data-v="on">On</button></div>
+          <p id="god-note" class="note">The monsters can't take you. Needs the password.</p>
         </div>
       </div>
       <div class="set-pane" data-pane="video" role="tabpanel" hidden>
@@ -15199,9 +15204,11 @@ function hostTick(dt) {
   processHolds(g, players, dt);
   tickLevers(g);
   updateLift(g, living, dt);
-  if (g.lv === 'l2') chudTick(g, living, players, dt, open);
-  else if (g.lv === 'l3') paleTick(g, living, players, dt, open);
-  else creatureTick(g, living, dt, open);
+  // god mode: the monsters don't know you are there
+  const prey = living.filter((p) => !p.gm);
+  if (g.lv === 'l2') chudTick(g, prey, players, dt, open);
+  else if (g.lv === 'l3') paleTick(g, prey, players, dt, open);
+  else creatureTick(g, prey, dt, open);
 }
 
 function gatherPlayers(g) {
@@ -15209,7 +15216,7 @@ function gatherPlayers(g) {
   for (const p of netPeers()) {
     const s = p.s;
     if (!s || typeof s.x !== 'number' || s.rn !== g.rn) continue;
-    out.push({ id: p.id, me: p.me, x: s.x, z: s.z, yaw: +s.y || 0, pitch: +s.p || 0, run: s.run === 1, cro: s.cro === 1, fl: s.fl !== 0, vl: +s.vl || 0, a: s.a, h: s.h || '', mv: +s.mv || 0, name: s.n });
+    out.push({ id: p.id, me: p.me, gm: s.gm === 1, x: s.x, z: s.z, yaw: +s.y || 0, pitch: +s.p || 0, run: s.run === 1, cro: s.cro === 1, fl: s.fl !== 0, vl: +s.vl || 0, a: s.a, h: s.h || '', mv: +s.mv || 0, name: s.n });
   }
   return out;
 }
@@ -16313,6 +16320,7 @@ function queueAction(kind, id) {
 function myStateObject() {
   const me = Game.me, g = Game.g;
   const s = { v: 1, n: Settings.name, c: Settings.color, cr: Net.creator || Net.mode === 'solo' ? 1 : 0, mic: Sound.hasMic ? 1 : 0, rn: g ? g.rn : 0 };
+  if (Settings.godOk && Settings.god === 'on') s.gm = 1;
   if (me && g) {
     Object.assign(s, { x: r2(me.x), z: r2(me.z), y: r2(me.yaw), p: r2(me.pitch), run: me.sprinting ? 1 : 0, cro: me.crouching ? 1 : 0,
       fl: me.fl ? 1 : 0, vl: r2(me.vl), mv: r2(me.speed), h: me.holding, d: me.dead ? 1 : 0, a: Game.actQueue[0] || null });
@@ -16741,7 +16749,7 @@ function jumpScare() {
 function showDeath(delay = 1300) {
   const solo = Net.mode === 'solo' || netPeers().length < 2;
   setText($('death-text'), solo ? 'It has you. You wake up in the last shelter you reached.' : 'Your team can bring you back. Get one of them to a shelter.');
-  setTimeout(() => { if (Game.me && Game.me.dead) $('death').hidden = false; }, delay);
+  setTimeout(() => { if (Game.me && Game.me.dead && Game.mode === 'play') $('death').hidden = false; }, delay);
 }
 function hideDeath() { $('death').hidden = true; }
 
@@ -19213,7 +19221,7 @@ function breachEndingLeave() {
 }
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '' };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '', god: 'off', godOk: false };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -19239,6 +19247,7 @@ function loadSettings() {
   // the rooms you host: private (code only) unless you say otherwise, and what you called them
   Settings.roomVis = saved.roomVis === 'public' ? 'public' : 'private';
   Settings.roomName = cleanTitle(saved.roomName);
+  Settings.godOk = saved.godOk === true; Settings.god = Settings.godOk && saved.god === 'on' ? 'on' : 'off';
   applyUiSize();
   applyControls();
   $('name-input').value = Settings.name; $('sens').value = String(Settings.sens); $('vol').value = String(Settings.vol); $('bright').value = String(Settings.bright);
@@ -19250,7 +19259,7 @@ function saveSettings() {
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
       gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls,
-      roomVis: Settings.roomVis, roomName: Settings.roomName }));
+      roomVis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk }));
   } catch (e) { /* storage blocked */ }
 }
 
@@ -19315,6 +19324,7 @@ function setMode(m) {
   $('lobby').hidden = m !== 'lobby';
   $('hud').hidden = m !== 'play';
   $('pause').hidden = true;
+  if (m !== 'play') hideDeath();
   if (m !== 'end') $('end').hidden = true;
   $('skip').hidden = !(m === 'coldopen' || (m === 'intro' && netIsHost()));
   if (m !== 'play' && document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) { /* fine */ } }
@@ -19722,6 +19732,19 @@ function wireMenus() {
   wireSegs('rdist', 'rdist', () => applyRenderDistance(), Number);
   wireSegs('netmode', 'net', null);
   wireSegs('ctlmode', 'controls', applyControls);
+  // god mode: behind a password; once it is in, a plain On / Off
+  const renderGod = () => { $('god-lock').hidden = Settings.godOk; $('godmode').hidden = !Settings.godOk; setText($('god-note'), Settings.godOk ? 'On: the monsters can\'t take you.' : 'The monsters can\'t take you. Needs the password.'); };
+  wireSegs('godmode', 'god', () => showToast(Settings.god === 'on' ? 'God mode on' : 'God mode off', '', 1400));
+  const unlockGod = () => {
+    if ($('god-code').value.trim() === '2024') { Settings.godOk = true; Settings.god = 'on'; saveSettings(); renderSegs(); renderGod(); showToast('God mode on', '', 1400); }
+    else { $('god-note').classList.add('warn'); setText($('god-note'), 'Wrong password.'); setTimeout(() => $('god-note').classList.remove('warn'), 1500); }
+    $('god-code').value = '';
+  };
+  $('god-unlock').addEventListener('click', unlockGod);
+  $('god-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlockGod(); });
+  renderGod();
+  // the "Taken" card goes with a click or a tap
+  $('death').addEventListener('click', hideDeath);
   wireSegs('room-vis', 'roomVis', () => { Rooms.tickAt = 0; renderLobbyUI(); }, (v) => (v === 'public' ? 'public' : 'private'));
   // settings: the gear in the menu, Settings on the pause card (inside Claude there is nothing for the Online tab)
   $('tab-online').hidden = IN_CLAUDE;
