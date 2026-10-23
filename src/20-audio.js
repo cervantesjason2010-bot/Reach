@@ -704,8 +704,14 @@ const Sound = (() => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     const src = ctx.createMediaStreamSource(stream);
     const an = ctx.createAnalyser(); an.fftSize = 512; src.connect(an);
-    S.mic = { stream, an, buf: new Float32Array(512), muted: false };
+    S.mic = { stream, an, buf: new Float32Array(512), muted: false, src };
     return stream;
+  }
+  function disableMic() {
+    if (!S.mic) return;
+    try { S.mic.src.disconnect(); } catch (e) { /* gone */ }
+    for (const t of S.mic.stream.getTracks()) { try { t.stop(); } catch (e) { /* stopped */ } }
+    S.mic = null;
   }
   function micLevel() {
     if (!S.mic || S.mic.muted) return 0;
@@ -771,7 +777,7 @@ const Sound = (() => {
   return {
     init, get ready() { return S.ready; }, setTheme, updateCreature, scream, creatureStep, step, play, updateMusic, titleMusic, updateListener,
     bang, whoosh, nails, heard, withdraw, heartHard, duck, powerUp, engine, bankOn, chudStep, chudGrunt, chudBreath,
-    enableMic, micLevel, micVoiced, setMicMuted, attachVoice, detachVoice, placeVoice, get hasMic() { return !!S.mic; }, get ctx() { return ctx; },
+    enableMic, disableMic, micLevel, micVoiced, setMicMuted, attachVoice, detachVoice, placeVoice, get hasMic() { return !!S.mic; }, get ctx() { return ctx; },
     setMaster(v) { if (master) master.gain.setTargetAtTime(v, now(), 0.3); },
     // while someone is being killed everyone's voices come up: whoever it has is still screaming, and
     // the team should hear it over the noise of what is happening to them

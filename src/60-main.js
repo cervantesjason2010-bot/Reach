@@ -1,6 +1,6 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'public', roomName: '', god: 'off', godOk: false };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'public', roomName: '', god: 'off', godOk: false, voice: false };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -27,6 +27,7 @@ function loadSettings() {
   // rooms are public (listed under Find a room) unless the host picks Private; older saves kept 'private' by default, so they start again
   Settings.roomVis = saved.vis === 'private' ? 'private' : 'public';
   Settings.roomName = cleanTitle(saved.roomName);
+  Settings.voice = saved.voice === true;   // voice chat stays on from one game to the next once you turn it on
   Settings.godOk = saved.godOk === true; Settings.god = Settings.godOk && saved.god === 'on' ? 'on' : 'off';
   applyUiSize();
   applyControls();
@@ -39,7 +40,7 @@ function saveSettings() {
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
       gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls,
-      vis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk }));
+      vis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk, voice: Settings.voice }));
   } catch (e) { /* storage blocked */ }
 }
 
@@ -183,6 +184,7 @@ function enterRound(g) {
   World.bloodPools = [];
   if (R.camera.fov !== 72) { R.camera.fov = 72; R.camera.updateProjectionMatrix(); }
   if (Touch.on) { lockSideways(); keepAwake(true); }
+  if (NetCaps.voice && Settings.voice && Net.mode === 'peer') startVoice(false);
   if (g.ph === 'intro') { setMode('intro'); startIntro(); }
   else { Cinema.mode = null; setLetterbox(false); setMode('play'); }
 }
@@ -221,6 +223,7 @@ async function goOnline(code, creator, fromList) {
   Lobby.joining = false;
   Lobby.view = 'main';
   Net.myState = lobbyState();
+  if (NetCaps.voice && Settings.voice) startVoice(false);
   setMenuBusy(false);
   Game.g = null; Game.round = -1; Game.lostShown = false;
   Game.joinedAt = performance.now();
@@ -479,6 +482,19 @@ function wireInput() {
     Input.slotPick = (Game.slot || 0) + (e.deltaY > 0 ? 1 : -1);
   }, { passive: true });
 }
+// ---------- voice chat ----------
+async function startVoice(asked) {
+  if (Sound.hasMic) return;
+  try {
+    Net.micStream = await Sound.enableMic();
+    Settings.voice = true; saveSettings();
+  } catch (e) {
+    Game.micErr = (e && (e.name + ': ' + e.message)) || 'error';
+    if (asked) { Settings.voice = false; saveSettings(); setText($('btn-mic'), 'Mic blocked. Allow it in the browser.'); return; }
+  }
+  renderMicButton();
+}
+function renderMicButton() { setText($('btn-mic'), Sound.hasMic ? 'Voice chat on · turn off' : 'Turn on voice chat'); }
 function toggleMute() { Settings.muted = !Settings.muted; Sound.setMicMuted(Settings.muted); showToast(Settings.muted ? 'Mic muted' : 'Mic on', '', 1200); }
 function togglePause(on) {
   if (Game.mode !== 'play') return;
@@ -592,12 +608,9 @@ function wireMenus() {
     const done = () => { setText($('btn-copy'), 'Copied'); setTimeout(renderLobbyUI, 1400); };
     try { navigator.clipboard.writeText(text).then(done, () => {}); } catch (e) { /* select it instead */ }
   });
-  $('btn-mic').addEventListener('click', async () => {
-    try {
-      Net.micStream = await Sound.enableMic();
-      setText($('btn-mic'), 'Voice chat on');
-      $('btn-mic').disabled = true;
-    } catch (e) { setText($('btn-mic'), 'Mic blocked. Allow it in the browser.'); }
+  $('btn-mic').addEventListener('click', () => {
+    if (Sound.hasMic) { Sound.disableMic(); Net.micStream = null; Settings.voice = false; saveSettings(); renderMicButton(); return; }
+    startVoice(true);
   });
   $('btn-resume').addEventListener('click', () => { $('pause').hidden = true; Game.paused = false; lockPointer(true); });
   $('btn-quit').addEventListener('click', async () => { $('pause').hidden = true; await backToLobby(); });
@@ -928,6 +941,9 @@ async function boot2() {
     return;
   }
   NetCaps = await initNet();
+  // voice chat was on last time: back on by itself (the browser remembers the permission on a website)
+  if (NetCaps.voice && Settings.voice) startVoice(false);
+  renderMicButton();
   // A hidden tab gets no animation frames, so the loop that sends your state stops. Keep a slow heartbeat going
   // meanwhile, so your team doesn't take you for gone while you're looking at another tab.
   setInterval(() => { if (document.hidden && Net.mode !== 'solo') netPublish(Net.myState, true); }, 1000);
