@@ -15175,7 +15175,7 @@ function hostTick(dt) {
     g.ca = ca; hostEvent(g, 'area', { a: ca });
     // the team has moved on: before long, it comes after them (and if it has not shown itself yet, it does it here)
     if (sim.state === 'dormant') { sim.spawnFor = ca; sim.timer = Math.min(sim.timer, 12 + Math.random() * 8); }
-    else if (sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') { sim.spawnFor = ca; sim.followT = 6 + Math.random() * 6; }
+    else if (sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') { sim.spawnFor = ca; sim.followT = 18 + Math.random() * 12; }
   }
   // checkpoints and respawns
   for (const p of living) {
@@ -15502,7 +15502,7 @@ function creatureTick(g, living, dt, open) {
   // How close it lets itself get. After it has fed - or been shut out - it backs right off and gives the team
   // room to breathe; then, as the quiet goes on, it drifts closer, and closer, until it is hunting them.
   if (sim.menace === undefined) sim.menace = 0.45;
-  if (sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') sim.menace = Math.min(1, sim.menace + dt * 0.011);
+  if (sim.state !== 'chase' && sim.state !== 'reach' && sim.state !== 'eat') sim.menace = Math.min(1, sim.menace + dt * 0.0025);
   if (sim.state === 'dormant') {
     cr.mode = 'hidden';
     sim.timer -= dt;
@@ -15567,15 +15567,15 @@ function creatureTick(g, living, dt, open) {
   if (sim.litT > 1.1 && lit) heard = { x: lit.x, z: lit.z, d: dist2(lit.x, lit.z, sim.x, sim.z), p: lit, loud: false, light: true };
   for (const p of living) {
     const wet = cellFlag(L, L.water, p.x, p.z);
-    let r = p.mv > 0.3 ? (p.run ? 10 : p.cro ? 0.6 : 2.6) : 0;
+    let r = p.mv > 0.3 ? (p.run ? 7 : p.cro ? 0.4 : 1.8) : 0;
     // the power cell hums, and it is heavy: whoever carries it is heard
-    if (Object.keys(g.it).some((k) => k.startsWith('cell') && g.it[k].o === p.id)) r = Math.max(r, p.mv > 0.3 ? 4.5 : 2.2);
+    if (Object.keys(g.it).some((k) => k.startsWith('cell') && g.it[k].o === p.id)) r = Math.max(r, p.mv > 0.3 ? 3.2 : 1.5);
     if (wet && p.mv > 0.3) r *= p.cro ? 2.5 : 1.7;
-    r = Math.max(r, p.vl * 16);
+    r = Math.max(r, p.vl * 11);
     if (r <= 0) continue;
     const d = dist2(p.x, p.z, sim.x, sim.z);
-    const eff = lineOfSight(L, sim.x, sim.z, p.x, p.z, open) ? r : r * 0.55;
-    if (d < eff && (!heard || d < heard.d)) heard = { x: p.x, z: p.z, d, p, loud: r > 6 };
+    const eff = lineOfSight(L, sim.x, sim.z, p.x, p.z, open) ? r : r * 0.45;
+    if (d < eff && (!heard || d < heard.d)) heard = { x: p.x, z: p.z, d, p, loud: r > 5 };
   }
   for (const n of sim.noises) {
     const d = dist2(n.x, n.z, sim.x, sim.z);
@@ -15603,7 +15603,7 @@ function creatureTick(g, living, dt, open) {
     }
   } else if (heard) {
     if (sim.state !== 'investigate' || dist2(heard.x, heard.z, sim.goal ? sim.goal.x : 0, sim.goal ? sim.goal.z : 0) > 2) { sim.state = 'investigate'; sim.goal = { x: heard.x, z: heard.z }; sim.path = null; sim.timer = 14; sim.hurry = heard.loud ? 1 : 0; }
-    if (heard.d < 4.5 && heard.p) { sim.state = 'chase'; sim.target = heard.p.id; sim.lastSeen = { x: heard.x, z: heard.z }; sim.lost = 0; sim.scream = 1.8; hostEvent(g, 'scream', { x: sim.x, z: sim.z }); }
+    if (heard.d < 3 && heard.p) { sim.state = 'chase'; sim.target = heard.p.id; sim.lastSeen = { x: heard.x, z: heard.z }; sim.lost = 0; sim.scream = 1.8; hostEvent(g, 'scream', { x: sim.x, z: sim.z }); }
   }
   // act
   let speed = 0, goal = null, mode = 'walk';
@@ -15660,6 +15660,12 @@ function creatureTick(g, living, dt, open) {
       // where it was going: it stops, and listens. At a shelter door, or on a lurk, it waits a long time.
       sim.arrived = true;
       sim.pause = sim.roam === 'lurk' ? 8 + Math.random() * 7 : sim.roam === 'shelter' ? 5 + Math.random() * 6 : Math.random() < 0.5 ? 1.2 + Math.random() * 3 : 0;
+    }
+    // someone has gone in where it was heading: it leaves them be and goes somewhere else
+    sim.occT = (sim.occT || 0) - dt;
+    if (sim.goal && !arrived && sim.roam !== 'hunt' && sim.occT <= 0) {
+      sim.occT = 1;
+      if (living.some((p) => { const d = Math.hypot(p.x - sim.goal.x, p.z - sim.goal.z); return d < 6 || (d < 15 && lineOfSight(L, p.x, p.z, sim.goal.x, sim.goal.z, open)); })) sim.wanderT = 0;
     }
     if (!sim.goal || sim.wanderT <= 0 || (arrived && sim.pause <= 0)) { sim.goal = pickRoamGoal(g, living, open); sim.wanderT = 30; sim.path = null; sim.arrived = false; }
     if (sim.pause > 0) { sim.pause -= dt; mode = 'idle'; }
@@ -15768,14 +15774,18 @@ function pickRoamGoal(g, living, open) {
   const nearest = (x, z) => { let d = 1e9; for (const p of living) d = Math.min(d, Math.hypot(p.x - x, p.z - z)); return d; };
   const inArea = (q) => q.x >= area.offX && q.x < area.offX + area.w && q.z >= area.offZ && q.z < area.offZ + area.h;
   const trail = (sim.scent || []).filter((q) => !q.safe && inArea(q));
+  // Wandering, it keeps out of wherever someone is: it only goes in there with a reason (a sound, a sighting,
+  // a long hunger). Somewhere is someone's when they are close by, or can see across to it from nearby.
+  const occupied = (q) => living.some((p) => { const d = Math.hypot(p.x - q.x, p.z - q.z); return d < 6 || (d < 15 && lineOfSight(L, p.x, p.z, q.x, q.z, open)); });
+  const free = (q) => q && !occupied(q);
   // just fed, or just shut out: somewhere well away from all of them
   if (m < 0.35 && living.length) {
     let best = null, bd = -1;
-    for (let i = 0; i < 30; i++) { const q = rnd(); if (!q) continue; const d = nearest(q.x, q.z); if (d > bd) { bd = d; best = q; } }
+    for (let i = 0; i < 30; i++) { const q = rnd(); if (!free(q)) continue; const d = nearest(q.x, q.z); if (d > bd) { bd = d; best = q; } }
     if (best) { sim.roam = 'retreat'; return best; }
   }
   // hungry: on the freshest trail, closing in
-  if (m > 0.72 && trail.length) {
+  if (m > 0.97 && trail.length) {
     for (let i = trail.length - 1; i >= 0; i--) {
       if (g.t - trail[i].t < 3) continue;
       const q = walkPoint(L, trail[i].x, trail[i].z, open);
@@ -15786,19 +15796,19 @@ function pickRoamGoal(g, living, open) {
   // the shelters: it knows that is where they hide
   if (r < 0.2) {
     const ss = L.safes.filter((q) => q.area === g.ca && !(sim.cool[q.id] > g.t));
-    if (ss.length) { const s = ss[Math.floor(Math.random() * ss.length)]; const q = walkPoint(L, s.outside.x, s.outside.z, open); if (q) { sim.roam = 'shelter'; return q; } }
+    if (ss.length) { const s = ss[Math.floor(Math.random() * ss.length)]; const q = walkPoint(L, s.outside.x, s.outside.z, open); if (free(q)) { sim.roam = 'shelter'; return q; } }
   }
   // their trail, from a little while ago
   if (r < 0.6 && trail.length) {
     const old = trail.filter((q) => g.t - q.t > 12 && g.t - q.t < 75);
-    if (old.length) { const t2 = old[Math.floor(Math.random() * old.length)]; const q = walkPoint(L, t2.x, t2.z, open); if (q) { sim.roam = Math.random() < 0.25 ? 'lurk' : 'trail'; return q; } }
+    if (old.length) { const t2 = old[Math.floor(Math.random() * old.length)]; const q = walkPoint(L, t2.x, t2.z, open); if (free(q)) { sim.roam = Math.random() < 0.25 ? 'lurk' : 'trail'; return q; } }
   }
   // somewhere it has not been for a while - not too close to them, not too far
   let best = null, bs = -1e9;
   for (let i = 0; i < 24; i++) {
-    const q = rnd(); if (!q) continue;
+    const q = rnd(); if (!free(q)) continue;
     const since = Math.min(g.t - lastVisit(sim, q.x, q.z), 150), d = Math.hypot(q.x - sim.x, q.z - sim.z);
-    const sc = since - d * 0.7 - (living.length ? Math.abs(nearest(q.x, q.z) - lerp(20, 9, m)) * 0.8 : 0);
+    const sc = since - d * 0.7 - (living.length ? Math.abs(nearest(q.x, q.z) - lerp(24, 14, m)) * 0.6 : 0);
     if (sc > bs) { bs = sc; best = q; }
   }
   sim.roam = Math.random() < 0.15 ? 'lurk' : 'explore';
