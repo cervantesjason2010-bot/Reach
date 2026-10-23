@@ -22,6 +22,10 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--void); color: var(--ink); font-family: var(--mono); font-size: 13px; overflow: hidden; -webkit-font-smoothing: antialiased; user-select: none; }
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: #000; }
+/* the camera lock (L): no cursor while the camera follows the mouse; a hand while the cursor is free to drag the view */
+body.camlock #view { cursor: none; }
+body.camfree #view { cursor: grab; }
+body.camdrag #view { cursor: grabbing; }
 .bar { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 30; transition: height 0.9s cubic-bezier(.7, 0, .2, 1); pointer-events: none; }
 .bar.top { top: 0; } .bar.bottom { bottom: 0; }
 body.cinema .bar { height: 11vh; }

@@ -108,7 +108,7 @@ function setMode(m) {
   touchRelease();
   if (World.viewModel) World.viewModel.group.visible = m === 'play' || m === 'intro';
   if (m === 'lobby') renderLobbyUI();
-  if (m === 'play' && !document.pointerLockElement && !Look.dragLook && !Touch.on) { $('pause').hidden = false; setText($('pause-note'), 'Click to take control.'); setText($('btn-resume'), 'Play'); }
+  if (m === 'play' && !document.pointerLockElement && !Look.dragLook && Look.lock && !Touch.on) { $('pause').hidden = false; setText($('pause-note'), 'Click to take control.'); setText($('btn-resume'), 'Play'); }
 }
 
 // ---------- levels ----------
@@ -362,18 +362,61 @@ function settingsTab(tab) {
 }
 
 // ---------- input ----------
-const Look = { dragLook: false };
-// Pointer lock needs a click; if a click-driven request fails, fall back to drag-to-look.
+// The camera lock (L, like a shift lock): locked, the camera follows the mouse; unlocked, the cursor is free
+// and you look by dragging. Locked is the mouse captured (pointer lock) - or, where the page isn't allowed to
+// capture it (dragLook), the camera turning with every move of the mouse over the game, and on by itself near
+// the edges of the screen, where the mouse runs out of room.
+const Look = { dragLook: false, lock: true, freeing: false, hadLock: false, asked: false, over: false, mx: 0, my: 0, cursor: '' };
+// Pointer lock needs a click (or a key); if it isn't allowed here at all, the game turns with the mouse itself.
 function lockPointer(fromClick) {
   // on a touch screen there is no pointer to lock: the right of the screen is the look
-  if (Look.dragLook || Touch.on) { $('pause').hidden = true; Game.paused = false; return; }
+  if (Look.dragLook || Touch.on || !Look.lock) { $('pause').hidden = true; Game.paused = false; return; }
   const c = $('view');
-  const fail = () => { if (fromClick) { Look.dragLook = true; $('pause').hidden = true; Game.paused = false; showToast('Hold the mouse button and drag to look', '', 3000); } };
+  Look.asked = !!fromClick;
   try {
     const r = c.requestPointerLock ? c.requestPointerLock() : null;
-    if (!c.requestPointerLock) fail();
-    else if (r && typeof r.catch === 'function') r.catch(fail);
-  } catch (e) { fail(); }
+    if (!c.requestPointerLock) pointerLockFailed();
+    else if (r && typeof r.catch === 'function') r.catch(pointerLockFailed);
+  } catch (e) { pointerLockFailed(); }
+}
+function pointerLockFailed() {
+  if (!Look.asked) return;
+  Look.asked = false;
+  // it has worked here before: most likely just asked again too soon after Esc - the next click will do
+  if (Look.hadLock) { if (Game.mode === 'play') { $('pause').hidden = false; setText($('pause-note'), 'Click to take control.'); } return; }
+  if (Look.dragLook) return;
+  Look.dragLook = true; $('pause').hidden = true; Game.paused = false;
+  showToast('Move the mouse to look · L unlocks the camera', '', 3200);
+}
+function toggleCamLock() {
+  Look.lock = !Look.lock;
+  if (!Look.lock) {
+    if (document.pointerLockElement === $('view')) { Look.freeing = true; try { document.exitPointerLock(); } catch (e) { Look.freeing = false; } }
+    showToast('Camera lock off · drag to look', '', 1800);
+  } else {
+    showToast('Camera lock on', '', 1400);
+    if ($('pause').hidden) lockPointer(true);
+  }
+}
+// with the camera locked but the mouse not captured, the edges of the screen keep turning you
+function softLookTick(dt) {
+  const me = Game.me;
+  if (!me || me.dead || Game.reading || Game.keypad || Touch.on || !(Look.lock && Look.dragLook && Look.over) || !$('pause').hidden || settingsOpen()) return;
+  const w = window.innerWidth, h = window.innerHeight, zx = Math.max(36, w * 0.07), zy = Math.max(28, h * 0.07);
+  const ex = Look.mx < zx ? -(1 - Look.mx / zx) : Look.mx > w - zx ? 1 - (w - Look.mx) / zx : 0;
+  const ey = Look.my < zy ? -(1 - Look.my / zy) : Look.my > h - zy ? 1 - (h - Look.my) / zy : 0;
+  me.yaw -= ex * 2.4 * Settings.sens * dt;
+  me.pitch = clamp(me.pitch - ey * 1.1 * Settings.sens * dt, -1.4, 1.4);
+}
+// the cursor over the game: hidden while the camera is locked to it, a hand while it's free to drag the view
+function updateCursor() {
+  const playing = Game.mode === 'play' && !Touch.on && $('pause').hidden && !settingsOpen() && !Game.keypad && !Game.reading;
+  const want = !playing ? '' : Look.lock ? 'lock' : Input.mouseDown ? 'drag' : 'free';
+  if (want === Look.cursor) return;
+  Look.cursor = want;
+  document.body.classList.toggle('camlock', want === 'lock');
+  document.body.classList.toggle('camfree', want === 'free' || want === 'drag');
+  document.body.classList.toggle('camdrag', want === 'drag');
 }
 function wireInput() {
   const c = $('view');
@@ -392,6 +435,7 @@ function wireInput() {
     if (e.code === 'KeyG') Input.gPressed = true;
     if (/^Digit[1-5]$/.test(e.code)) Input.slotPick = +e.code.slice(5) - 1;
     if (e.code === 'KeyM') toggleMute();
+    if (e.code === 'KeyL' && Game.mode === 'play' && !Touch.on) toggleCamLock();
     if ((e.code === 'Space' || e.code === 'Escape') && (Game.mode === 'coldopen' || Game.mode === 'intro' || (Game.mode === 'end' && Cinema.mode === 'ending'))) skipCinema();
     if (e.code === 'Escape' && Game.mode === 'play' && !document.pointerLockElement) togglePause(true);
     if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
@@ -400,15 +444,23 @@ function wireInput() {
   window.addEventListener('blur', () => { Input.keys = {}; Input.eHeld = false; });
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === c;
-    if (locked) { $('pause').hidden = true; Game.paused = false; }
+    if (locked) { Look.hadLock = true; Look.asked = false; $('pause').hidden = true; Game.paused = false; }
+    else if (Look.freeing) Look.freeing = false;     // L let go of the mouse: the game goes on with the cursor free
     else if (Game.mode === 'play' && !Look.dragLook && !Game.reading) togglePause(true);
   });
+  document.addEventListener('pointerlockerror', pointerLockFailed);
   c.addEventListener('mousedown', () => { Input.mouseDown = true; if (Game.mode === 'play' && !document.pointerLockElement && !Touch.on) lockPointer(true); });
   window.addEventListener('mouseup', () => { Input.mouseDown = false; });
+  document.documentElement.addEventListener('mouseleave', () => { Look.over = false; });
   window.addEventListener('mousemove', (e) => {
+    Look.mx = e.clientX; Look.my = e.clientY; Look.over = true;
+    if (!e.buttons) Input.mouseDown = false;       // let go outside the window
     const me = Game.me;
     if (Game.mode !== 'play' || !me || me.dead || Game.reading) return;
-    if (!(document.pointerLockElement === c || (Look.dragLook && Input.mouseDown))) return;
+    // captured, it always turns; locked but not captured, it turns over the game; unlocked, only while dragged
+    const soft = Look.lock && Look.dragLook && !Game.keypad && $('pause').hidden && !settingsOpen();
+    const drag = (Look.dragLook || !Look.lock) && Input.mouseDown;
+    if (!(document.pointerLockElement === c || soft || drag)) return;
     const s = 0.0021 * Settings.sens;
     me.yaw -= (e.movementX || 0) * s;
     me.pitch = clamp(me.pitch - (e.movementY || 0) * s, -1.4, 1.4);
@@ -417,7 +469,7 @@ function wireInput() {
   $('note').addEventListener('click', closeNote);
   // the wheel runs through the slots
   window.addEventListener('wheel', (e) => {
-    if (Game.mode !== 'play' || !(document.pointerLockElement === c || Look.dragLook)) return;
+    if (Game.mode !== 'play' || !$('pause').hidden || settingsOpen() || !(document.pointerLockElement === c || Look.dragLook || !Look.lock)) return;
     const now = performance.now();
     if (now - (Look.wheelT || 0) < 90) return;
     Look.wheelT = now;
@@ -739,7 +791,7 @@ function tickFrame(now) {
     case 'lobby': updateLobbyScene(dt, t); ca = 0; if (now - (Game.lobbyAt || 0) > 400) { Game.lobbyAt = now; renderLobbyUI(); } break;
     case 'intro': updateIntro(dt, t); processGameEvents(); ca = 0; break;
     case 'play': {
-      if (!Game.paused) updateLocalPlayer(dt, t);
+      if (!Game.paused) { softLookTick(dt); updateLocalPlayer(dt, t); }
       R.fade = damp(R.fade, 0, 2.5, dt);
       // what is waiting at the bottom gets built a little at a time while the team is on the last floors
       if (!Chud.ready && Game.g.lv === 'l1' && Game.g.ca >= 8) chudBuildStep(3, R.scene);
@@ -761,6 +813,7 @@ function tickFrame(now) {
     case 'debug': ca = Game.debugArea || 0; if (Game.debugTick) Game.debugTick(dt, t); updateLightPool(dt, R.camera, ca); break;
   }
   updateTouch();
+  updateCursor();
   // the lobby's off-centre framing is only for the lobby
   if (Game.mode !== 'lobby' && R.camera.view && R.camera.view.enabled) R.camera.clearViewOffset();
   if (Game.me && Game.g && (Game.mode === 'intro' || Game.mode === 'play' || Game.mode === 'end')) {

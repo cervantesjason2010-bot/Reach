@@ -57,4 +57,6 @@ IN THE GAME
 CONTROLS
   WASD move, Shift run, C crouch (and crawl under low racks), F flashlight,
   E use (hold for some things), G whistle, 1-5 or the mouse wheel to pick
-  an item, Q drop the item in your hand, M mute your mic, Esc pause.
+  an item, Q drop the item in your hand, M mute your mic, L camera lock
+  (on: the camera follows the mouse; off: the cursor is free and you hold
+  the mouse button and drag to look), Esc pause.
