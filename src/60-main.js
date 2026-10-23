@@ -1,6 +1,6 @@
 // ================= main: settings, input, menus, the loop =================
 const ARTIFACT_URL = 'https://claude.ai/artifact/8XJgwwX12eTSejCRbKjViN';
-const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'private', roomName: '', god: 'off', godOk: false };
+const Settings = { name: '', color: 0, sens: 1, vol: 0.9, bright: 1.15, muted: false, gfx: 'high', rdist: 80, net: 'auto', whisper: true, map: 'l1', ui: 0.85, early: false, controls: 'auto', roomVis: 'public', roomName: '', god: 'off', godOk: false };
 const MAP_NAMES = { l1: 'Reach - B4', l2: 'Seize - B5 · Early access', l3: 'Breach - A1 · Early access', camp: 'Campaign · All the Way Down' };
 // levels still in early access: playable once the code has been entered
 const EARLY_MAPS = ['l2', 'l3'];
@@ -24,7 +24,8 @@ function loadSettings() {
   Settings.map = saved.map === 'camp' ? 'camp' : EARLY_MAPS.includes(saved.map) && Settings.early ? saved.map : 'l1';
   Settings.ui = [0.7, 0.85, 1].includes(saved.ui) ? saved.ui : 0.85;
   // the rooms you host: private (code only) unless you say otherwise, and what you called them
-  Settings.roomVis = saved.roomVis === 'public' ? 'public' : 'private';
+  // rooms are public (listed under Find a room) unless the host picks Private; older saves kept 'private' by default, so they start again
+  Settings.roomVis = saved.vis === 'private' ? 'private' : 'public';
   Settings.roomName = cleanTitle(saved.roomName);
   Settings.godOk = saved.godOk === true; Settings.god = Settings.godOk && saved.god === 'on' ? 'on' : 'off';
   applyUiSize();
@@ -38,7 +39,7 @@ function saveSettings() {
   try {
     localStorage.setItem('reach-settings', JSON.stringify({ name: Settings.name, color: Settings.color, sens: Settings.sens, vol: Settings.vol, bright: Settings.bright,
       gfx: Settings.gfx, rdist: Settings.rdist, net: Settings.net, whisper: Settings.whisper, map: Settings.map, ui: Settings.ui, early: Settings.early, controls: Settings.controls,
-      roomVis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk }));
+      vis: Settings.roomVis, roomName: Settings.roomName, god: Settings.god, godOk: Settings.godOk }));
   } catch (e) { /* storage blocked */ }
 }
 

@@ -287,7 +287,7 @@ function renderRoomList() {
       : "Couldn't reach the game's server to look for rooms. Try again in a minute, or join with a code.";
   } else if (n) text = n + (n === 1 ? ' public room.' : ' public rooms.') + ' Pick one to join.';
   else if (IN_CLAUDE ? now - Rooms.since < 2500 : !Rooms.looked) text = 'Looking for rooms…';
-  else text = 'No public rooms right now. Host one and make it public, or join a friend with their code.';
+  else text = 'No public rooms right now. Host one, or join a friend with their code.';
   const note = $('browse-note');
   if (note.textContent !== text) note.textContent = text;
   note.classList.toggle('warn', warn);

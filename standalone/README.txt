@@ -43,8 +43,9 @@ LEVELS
 IN THE GAME
   One player presses "Host co-op", names the room, and sends the 5-letter
   room code (or the invite link) to friends, who type it and press "Join".
-  Set the room to Public and anyone can find it under "Find a room" and
-  join from the list; Private rooms are for whoever has the code.
+  Rooms are Public: anyone can find them under "Find a room" and join
+  from the list. Set a room to Private and only people with the code can
+  join.
   Everyone who wants voice chat turns it on in Settings > Online.
   Teammates hear you when you are near them, and so does the creature -
   but not if you whisper (Whisper-safe mic).
